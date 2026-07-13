@@ -1,0 +1,64 @@
+[22:36:52.596] [MelonLoader.Bootstrap] Using HostFXR Path: C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II\MelonLoader\Dependencies\DotnetRuntime7\host\fxr\7.0.20\hostfxr.dll
+[22:36:52.599] [MelonLoader.Bootstrap] Using .NET runtime: 'C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II\MelonLoader\Dependencies\DotnetRuntime7'
+
+[22:36:54.360] ------------------------------
+[22:36:54.361] MelonLoader v0.7.3 Open-Beta
+[22:36:54.363] OS: Windows 11
+[22:36:54.363] Hash Code: 12F1E31B3189C4A4AB8687E4566E1402AD95C3AB2A8F2A91C07FC8C51FD66CDD
+[22:36:54.364] ------------------------------
+[22:36:54.364] Game Type: Il2cpp
+[22:36:54.364] Game Arch: x86
+[22:36:54.364] ------------------------------
+[22:36:54.365] Command-Line: 
+[22:36:54.365] ------------------------------
+[22:36:54.365] Core::BasePath = C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II
+[22:36:54.366] Game::BasePath = C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II
+[22:36:54.366] Game::DataPath = C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II\Lawgivers II_Data
+[22:36:54.366] Game::ApplicationPath = C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II\Lawgivers II.exe
+[22:36:54.366] Runtime Type: net6
+[22:36:54.554] ------------------------------
+[22:36:54.555] Game Name: Lawgivers II
+[22:36:54.555] Game Developer: SomniumSoft
+[22:36:54.557] Unity Version: 6000.3.19f1
+[22:36:54.557] Game Version: UNKNOWN
+[22:36:54.557] ------------------------------
+
+[22:36:55.838] Preferences Loaded!
+
+[22:36:55.965] Loading UserLibs...
+[22:36:55.967] 0 UserLibs loaded.
+
+[22:36:55.967] Loading Plugins...
+[22:36:55.971] 0 Plugins loaded.
+
+[22:36:56.372] Loading Il2CppAssemblyGenerator...
+[22:36:56.429] [Il2CppAssemblyGenerator] Using Cpp2IL Version: 2022.1.0-pre-release.21
+[22:36:56.429] [Il2CppAssemblyGenerator] Using Il2CppInterop Version = 1.5.1-ci.845+f03c8f4ae507d47ea814f3d11d1ec6b0391c1576
+[22:36:56.430] [Il2CppAssemblyGenerator] Using Unity Dependencies Version = 6000.3.19
+[22:36:56.431] [Il2CppAssemblyGenerator] Using Deobfuscation Regex = null
+[22:36:56.431] [Il2CppAssemblyGenerator] Cpp2IL is up to date.
+[22:36:56.432] [Il2CppAssemblyGenerator] Cpp2IL.Plugin.StrippedCodeRegSupport is up to date.
+[22:36:56.432] [Il2CppAssemblyGenerator] UnityDependencies is up to date.
+[22:36:56.432] [Il2CppAssemblyGenerator] Checking GameAssembly...
+[22:36:56.634] [Il2CppAssemblyGenerator] Assembly is up to date. No Generation Needed.
+
+[22:36:56.636] Loading Mods...
+[22:36:56.766] ------------------------------
+[22:36:57.276] Melon Assembly loaded: '.\Mods\LawgiversControl.dll'
+[22:36:57.276] SHA256 Hash: '5B89D601CAC9FDA9201D0F2D10DA7C761FAEFA6599294985A89B70CBEDEB82B5'
+
+[22:36:57.390] ------------------------------
+[22:36:57.391] Lawgivers II Control v1.1.0
+[22:36:57.391] by OpenAI
+[22:36:57.392] Assembly: LawgiversControl.dll
+[22:36:57.392] ------------------------------
+[22:36:57.392] ------------------------------
+[22:36:57.392] 1 Mod loaded.
+
+[22:36:57.711] Support Module Loaded: C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II\MelonLoader\Dependencies\SupportModules\Il2Cpp.dll
+[22:36:58.100] [Lawgivers II Control] Configuration loaded.
+[22:36:58.101] [Lawgivers II Control] Ready. Configuration is applied whenever a game scene is loaded.
+[22:36:58.524] [Lawgivers II Control] Configuration loaded.
+[22:36:58.602] [Lawgivers II Control] Game-load application hooks enabled.
+[22:36:58.634] [Lawgivers II Control] Nation missile count override enabled.
+[22:36:58.690] [Lawgivers II Control] Runtime self-test passed.

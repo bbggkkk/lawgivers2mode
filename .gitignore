@@ -1,0 +1,11 @@
+/.agents/
+/.codex/
+/reverse/
+/vendor/
+/release/
+/tools/cpp2il/
+/dist/*.dll
+/dist/*.exe
+*.user
+*.tmp
+*.bak

@@ -1,0 +1,20 @@
+{
+  "GeneratedUtc": "2026-07-13T13:36:58.6650238Z",
+  "Passed": true,
+  "Checks": {
+    "SpecificPersonSelector": true,
+    "PartyMemberSelector": true,
+    "PersonWealth": true,
+    "PersonLoyalty": true,
+    "PersonAbility": true,
+    "PersonPartyChange": true,
+    "PartyMoney": true,
+    "ActionPoints": true,
+    "ArmyUnits": true,
+    "ArmyCountMethods": true,
+    "Missiles": true,
+    "Probability100Percent": true,
+    "ProbabilityCanDisable": true
+  },
+  "Error": null
+}

@@ -1,0 +1,52 @@
+{
+  "AutoApply": true,
+  "PollSeconds": 1.0,
+  "DumpCatalog": true,
+  "ForceProbabilitySuccess": false,
+  "ActionPoints": {
+    "Value": null,
+    "Max": null
+  },
+  "People": [
+    {
+      "Name": "EDIT_PERSON_NAME",
+      "Changes": {
+        "Wealth": 1000000,
+        "Loyalty": 100,
+        "Party": "EDIT_NEW_PARTY_NAME",
+        "Attributes": {
+          "recognition": 100,
+          "energy": 100,
+          "experience": 100,
+          "popularity": 100,
+          "charm": 100,
+          "eloquence": 100,
+          "cunning": 100,
+          "influence": 100
+        }
+      }
+    }
+  ],
+  "Parties": [
+    {
+      "Name": "EDIT_PARTY_NAME",
+      "Money": 10000000,
+      "Members": {
+        "Wealth": 1000000,
+        "Loyalty": 100,
+        "Attributes": {
+          "energy": 100,
+          "experience": 100
+        }
+      }
+    }
+  ],
+  "Nations": [
+    {
+      "Name": "EDIT_NATION_NAME",
+      "Armies": 20,
+      "ArmyUnits": 100,
+      "Missiles": 10
+    }
+  ]
+}
