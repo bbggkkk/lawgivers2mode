@@ -23,6 +23,14 @@ foreach ($script in $scripts) {
   if ($errors.Count -gt 0) { throw "PowerShell syntax error in $script`: $($errors[0].Message)" }
 }
 
+$publisherPath = Join-Path $root 'publish-release.ps1'
+if (Test-Path -LiteralPath $publisherPath -PathType Leaf) {
+  $publisherText = Get-Content -LiteralPath $publisherPath -Raw
+  if ($publisherText -notmatch "ErrorActionPreference = 'SilentlyContinue'[\s\S]+release view") {
+    throw 'The first-release existence check is not protected from a missing-release error.'
+  }
+}
+
 . (Join-Path $root 'steam-path.ps1')
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('LawgiversControl-path-test-' + [Guid]::NewGuid().ToString('N'))
 try {

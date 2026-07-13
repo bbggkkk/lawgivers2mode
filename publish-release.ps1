@@ -27,8 +27,17 @@ $checksum = (Get-FileHash -Algorithm SHA256 -LiteralPath $asset).Hash
 $checksumPath = Join-Path $PSScriptRoot 'release\SHA256SUMS.txt'
 Set-Content -LiteralPath $checksumPath -Encoding ASCII -Value "$checksum  $assetName"
 
-& $gh release view $tag --repo $Repository *> $null
-if ($LASTEXITCODE -eq 0) {
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = 'SilentlyContinue'
+try {
+  & $gh release view $tag --repo $Repository *> $null
+  $releaseExists = $LASTEXITCODE -eq 0
+}
+finally {
+  $ErrorActionPreference = $previousErrorActionPreference
+}
+
+if ($releaseExists) {
   & $gh release upload $tag $asset $checksumPath --repo $Repository --clobber
 }
 else {
