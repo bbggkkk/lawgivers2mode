@@ -6,6 +6,8 @@
 /tools/cpp2il/
 /dist/*.dll
 /dist/*.exe
+/bin/
+/obj/
 *.user
 *.tmp
 *.bak

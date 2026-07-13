@@ -9,12 +9,12 @@ using HarmonyLib;
 using MelonLoader;
 using Newtonsoft.Json;
 
-[assembly: MelonInfo(typeof(LawgiversControl.LawgiversControlMod), "Lawgivers II Control", "1.1.0", "OpenAI")]
+[assembly: MelonInfo(typeof(LawgiversControl.LawgiversControlMod), "Lawgivers II Control", "1.2.0", "OpenAI")]
 [assembly: MelonGame("SomniumSoft", "Lawgivers II")]
 
 namespace LawgiversControl
 {
-    public sealed class LawgiversControlMod : MelonMod
+    public sealed partial class LawgiversControlMod : MelonMod
     {
         private const BindingFlags All = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
         private static ModConfig _config;
@@ -34,9 +34,18 @@ namespace LawgiversControl
         private static DateTime _configWriteUtc;
         private DateTime _nextPollUtc;
         private bool _firstApplyPending = true;
+        private bool _menuVisible;
+        private static readonly string[] PersonAttributeNames =
+        {
+            "recognition", "energy", "experience", "loyalty", "popularity",
+            "charm", "eloquence", "cunning", "influence"
+        };
+
+        partial void EnsureControlUi();
 
         public override void OnInitializeMelon()
         {
+            _menuVisible = string.Equals(Environment.GetEnvironmentVariable("LAW_GIVERS_CONTROL_OPEN_UI"), "1", StringComparison.Ordinal);
             _directory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "UserData", "LawgiversControl");
             _configPath = Path.Combine(_directory, "config.json");
             _applyPath = Path.Combine(_directory, "apply.flag");
@@ -48,6 +57,8 @@ namespace LawgiversControl
             if (!File.Exists(_configPath))
                 File.WriteAllText(_configPath, JsonConvert.SerializeObject(ModConfig.CreateDefault(), Formatting.Indented));
             LoadConfig();
+            if (_menuVisible)
+                MelonLogger.Msg("Control UI auto-open enabled for runtime verification.");
             _harmony = new HarmonyLib.Harmony("openai.lawgivers2.control");
             MelonLogger.Msg("Ready. Configuration is applied whenever a game scene is loaded.");
         }
@@ -96,6 +107,7 @@ namespace LawgiversControl
 
         public override void OnSceneWasLoaded(int buildIndex, string sceneName)
         {
+            EnsureControlUi();
             LoadConfig();
             _applyPending = true;
             TryInstallPatches();
@@ -330,6 +342,108 @@ namespace LawgiversControl
             {
                 MelonLogger.Warning("Target party not found for person " + FriendlyName(person) + ": " + (changes.Party ?? changes.PartyId.ToString()));
             }
+        }
+
+        private static int MaxPersonAttributes(object person)
+        {
+            if (person == null)
+                return 0;
+            int changed = 0;
+            foreach (string name in PersonAttributeNames)
+            {
+                object attribute = Get(person, name);
+                if (attribute == null)
+                    continue;
+                int maximum = GetAttributeMaximum(attribute);
+                SetAttribute(person, name, maximum);
+                if (ToInt(Get(attribute, "Value", "valueCustom"), int.MinValue) == maximum)
+                    changed++;
+            }
+            return changed;
+        }
+
+        private static int GetAttributeMaximum(object attribute)
+        {
+            int maximum = ToInt(InvokeResult(attribute, "Max"), 100);
+            return maximum <= 0 || maximum > 255 ? 100 : maximum;
+        }
+
+        private static int MaxPartyMemberAttributes(object party, IEnumerable<object> people, out int peopleChanged)
+        {
+            peopleChanged = 0;
+            if (party == null || people == null)
+                return 0;
+            int partyId = ToInt(Get(party, "id"), int.MinValue);
+            int attributesChanged = 0;
+            foreach (object person in people.Where(p => ToInt(Get(p, "PartyID", "partyID"), int.MinValue) == partyId).ToList())
+            {
+                attributesChanged += MaxPersonAttributes(person);
+                peopleChanged++;
+            }
+            return attributesChanged;
+        }
+
+        private static bool AddPersonMoney(object person, long amount, out long result)
+        {
+            return AddLongValue(person, new[] { "Wealth", "wealth" }, amount, out result);
+        }
+
+        private static bool AddPartyMoney(object party, long amount, out long result)
+        {
+            return AddLongValue(Get(party, "money"), new[] { "value", "Value" }, amount, out result);
+        }
+
+        private static bool AddNationMoney(object nation, long amount, out long result)
+        {
+            return AddLongValue(Get(nation, "budget"), new[] { "value", "Value" }, amount, out result);
+        }
+
+        private static bool AddLongValue(object target, string[] names, long amount, out long result)
+        {
+            result = 0;
+            if (target == null || names == null || names.Length == 0)
+                return false;
+            long current = ToLong(Get(target, names), 0);
+            try { result = checked(current + amount); }
+            catch (OverflowException) { return false; }
+            foreach (string name in names)
+            {
+                if (Set(target, name, result))
+                    return ToLong(Get(target, names), long.MinValue) == result;
+            }
+            return false;
+        }
+
+        private static bool AddActionPoints(object actions, int amount, out int result)
+        {
+            result = 0;
+            if (actions == null)
+                return false;
+            int current = ToInt(Get(actions, "Points", "points"), 0);
+            try { result = checked(current + amount); }
+            catch (OverflowException) { return false; }
+            result = Math.Max(0, result);
+            if (Set(actions, "Points", result) || Set(actions, "points", result))
+                return ToInt(Get(actions, "Points", "points"), int.MinValue) == result;
+            if (!Invoke(actions, "Set", result))
+                return false;
+            return ToInt(Get(actions, "Points", "points"), int.MinValue) == result;
+        }
+
+        private static bool TryGetWorld(out Type instanceType, out object world, out List<object> people, out List<object> parties, out List<object> nations)
+        {
+            instanceType = FindType("Lawgivers.Instance");
+            world = instanceType == null ? null : GetStatic(instanceType, "World");
+            people = world == null ? new List<object>() : Values(Get(world, "people")).Where(x => x != null).ToList();
+            parties = world == null ? new List<object>() : Values(Get(world, "parties")).Where(x => x != null).ToList();
+            nations = world == null ? new List<object>() : Values(Get(world, "nations")).Where(x => x != null).ToList();
+            return world != null;
+        }
+
+        private static void RefreshApplyReport(Type instanceType, List<object> people, List<object> parties, List<object> nations)
+        {
+            try { WriteApplyReport(instanceType, people, parties, nations); }
+            catch (Exception ex) { MelonLogger.Warning("UI result report failed: " + ex.Message); }
         }
 
         private static void SetAttribute(object person, string name, int target)
@@ -584,15 +698,38 @@ namespace LawgiversControl
                 checks["PersonAbility"] = ToInt(Get(Get(person, "cunning"), "Value", "valueCustom"), -1) == 77;
                 checks["PersonPartyChange"] = ToInt(Get(person, "PartyID", "partyID"), -1) == 910002;
 
+                int maxed = MaxPersonAttributes(person);
+                checks["UiPersonMaxAll"] = maxed == PersonAttributeNames.Length && PersonAttributeNames.All(n =>
+                {
+                    object attribute = Get(person, n);
+                    return ToInt(Get(attribute, "Value", "valueCustom"), -1) == GetAttributeMaximum(attribute);
+                });
+                long personMoneyResult;
+                checks["UiPersonMoneyAdd"] = AddPersonMoney(person, 101L, out personMoneyResult) && personMoneyResult == 1100L;
+
+                Set(person, "PartyID", 910001);
+                int groupPeople;
+                int groupAttributes = MaxPartyMemberAttributes(partyA, new List<object> { person }, out groupPeople);
+                checks["UiPartyMembersMaxAll"] = groupPeople == 1 && groupAttributes == PersonAttributeNames.Length;
+
                 Set(Get(partyA, "money"), "value", 555L);
                 checks["PartyMoney"] = Convert.ToInt64(Get(Get(partyA, "money"), "value"), CultureInfo.InvariantCulture) == 555L;
+                long partyMoneyResult;
+                checks["UiPartyMoneyAdd"] = AddPartyMoney(partyA, 100L, out partyMoneyResult) && partyMoneyResult == 655L;
 
                 object actions = Activator.CreateInstance(actionType);
                 ApplyActionPointsObject(actions, new ActionPointRule { Value = 42, Max = 150 });
                 checks["ActionPoints"] = ToInt(Get(actions, "Points", "points"), -1) == 42 && ToInt(Get(actions, "Max"), -1) == 150;
+                int actionPointsResult;
+                checks["UiActionPointsAdd"] = AddActionPoints(actions, 8, out actionPointsResult) && actionPointsResult == 50;
 
                 object nation = Activator.CreateInstance(nationType);
                 Set(nation, "id", 930001);
+                object nationBudget = Activator.CreateInstance(fundType);
+                Set(nationBudget, "value", 1000L);
+                Set(nation, "budget", nationBudget);
+                long nationMoneyResult;
+                checks["UiNationMoneyAdd"] = AddNationMoney(nation, 250L, out nationMoneyResult) && nationMoneyResult == 1250L;
                 object legion = Activator.CreateInstance(legionType);
                 Set(legion, "units", 5);
                 Set(legion, "units", 25);
@@ -749,6 +886,66 @@ namespace LawgiversControl
             return false;
         }
 
+        private static object InvokeResult(object target, string name, params object[] args)
+        {
+            if (target == null)
+                return null;
+            return InvokeMethodResult(target.GetType(), target, name, args);
+        }
+
+        private static object InvokeStaticResult(Type type, string name, params object[] args)
+        {
+            return type == null ? null : InvokeMethodResult(type, null, name, args);
+        }
+
+        private static object InvokeMethodResult(Type type, object target, string name, object[] args)
+        {
+            args = args ?? new object[0];
+            foreach (MethodInfo method in type.GetMethods(All).Where(m => m.Name == name && m.IsStatic == (target == null) && m.GetParameters().Length == args.Length))
+            {
+                try
+                {
+                    ParameterInfo[] parameters = method.GetParameters();
+                    object[] converted = args.Select((a, i) => ConvertValue(a, parameters[i].ParameterType)).ToArray();
+                    return method.Invoke(target, converted);
+                }
+                catch { }
+            }
+            return null;
+        }
+
+        private static bool HasStaticSignature(Type type, string name, params Type[] parameterTypes)
+        {
+            if (type == null)
+                return false;
+            parameterTypes = parameterTypes ?? new Type[0];
+            return type.GetMethods(All).Any(method =>
+            {
+                try
+                {
+                    if (method == null || !method.IsStatic || method.Name != name)
+                        return false;
+                    ParameterInfo[] parameters = method.GetParameters();
+                    if (parameters == null || parameters.Length != parameterTypes.Length)
+                        return false;
+                    for (int i = 0; i < parameters.Length; i++)
+                    {
+                        if (parameters[i] == null || parameters[i].ParameterType == null)
+                            return false;
+                        if (parameterTypes[i] == null)
+                        {
+                            if (!parameters[i].ParameterType.IsArray)
+                                return false;
+                        }
+                        else if (parameters[i].ParameterType != parameterTypes[i])
+                            return false;
+                    }
+                    return true;
+                }
+                catch { return false; }
+            });
+        }
+
         private static IEnumerable<object> Values(object value)
         {
             if (value == null)
@@ -790,6 +987,18 @@ namespace LawgiversControl
         {
             try { return Convert.ToInt32(value, CultureInfo.InvariantCulture); }
             catch { return fallback; }
+        }
+
+        private static long ToLong(object value, long fallback)
+        {
+            try { return Convert.ToInt64(value, CultureInfo.InvariantCulture); }
+            catch { return fallback; }
+        }
+
+        private static bool ToBool(object value)
+        {
+            try { return Convert.ToBoolean(value, CultureInfo.InvariantCulture); }
+            catch { return false; }
         }
 
         private static string Text(object value) { return value == null ? null : value.ToString(); }

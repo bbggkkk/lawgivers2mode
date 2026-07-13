@@ -28,6 +28,7 @@ namespace Lawgivers
             public Attribute(int value) { valueCustom = value; }
             public int Value { get { return valueCustom; } }
             internal void Change(float delta) { valueCustom += (int)delta; }
+            internal int Max() { return 100; }
         }
 
         public int id;
@@ -75,6 +76,7 @@ namespace Lawgivers
     {
         public int id;
         public string Name;
+        public Fund budget = new Fund();
         private readonly List<Legion> legions = new List<Legion>();
         internal List<Legion> Legions { get { return legions; } }
         internal int get_Missiles() { return 0; }
@@ -189,6 +191,23 @@ internal static class ModLogicTests
             Check(File.Exists(catalog) && File.ReadAllText(catalog).Contains("Alice") && File.ReadAllText(catalog).Contains("Testland"), "catalog output");
             Check(File.Exists(report) && File.ReadAllText(report).Contains("\"Value\": 42") && File.ReadAllText(report).Contains("\"Money\": 555"), "live apply report");
 
+            int maxed = (int)InvokeStatic(mod, "MaxPersonAttributes", alice);
+            Check(maxed == 9 && PersonAttributes(alice).All(x => x.Value == 100), "UI specific person max all attributes and loyalty");
+
+            object[] groupMaxArgs = { alpha, Lawgivers.Instance.World.people.Values.Cast<object>().ToList(), 0 };
+            int groupAttributes = (int)InvokeStatic(mod, "MaxPartyMemberAttributes", groupMaxArgs);
+            Check((int)groupMaxArgs[2] == 1 && groupAttributes == 9 && PersonAttributes(bob).All(x => x.Value == 100), "UI party members max all attributes and loyalty");
+            Check(PersonAttributes(eve).All(x => x.Value == 10), "UI party max leaves other parties unchanged");
+
+            object[] personMoneyArgs = { alice, 100L, 0L };
+            Check((bool)InvokeStatic(mod, "AddPersonMoney", personMoneyArgs) && (long)personMoneyArgs[2] == 1099L && alice.Wealth == 1099L, "UI add personal money");
+            object[] partyMoneyArgs = { alpha, 200L, 0L };
+            Check((bool)InvokeStatic(mod, "AddPartyMoney", partyMoneyArgs) && (long)partyMoneyArgs[2] == 755L && alpha.money.value == 755L, "UI add party money");
+            object[] nationMoneyArgs = { nation, 300L, 0L };
+            Check((bool)InvokeStatic(mod, "AddNationMoney", nationMoneyArgs) && (long)nationMoneyArgs[2] == 300L && nation.budget.value == 300L, "UI add nation money");
+            object[] actionAddArgs = { Lawgivers.Instance.Player.actions, 8, 0 };
+            Check((bool)InvokeStatic(mod, "AddActionPoints", actionAddArgs) && (int)actionAddArgs[2] == 50 && Lawgivers.Instance.Player.actions.points == 50, "UI add action points");
+
             string runtimeConfig = Path.Combine(temp, "config.json");
             File.WriteAllText(runtimeConfig, "{\"AutoApply\":true,\"DumpCatalog\":false,\"ActionPoints\":{\"Value\":77,\"Max\":160},\"People\":[],\"Parties\":[],\"Nations\":[]}");
             SetStatic(mod, "_configPath", runtimeConfig);
@@ -215,6 +234,12 @@ internal static class ModLogicTests
     {
         if (!condition) throw new InvalidOperationException("Assertion failed: " + name);
         Console.WriteLine("PASS: " + name);
+    }
+
+    private static IEnumerable<Lawgivers.Person.Attribute> PersonAttributes(Lawgivers.Person person)
+    {
+        return new[] { person.recognition, person.energy, person.experience, person.loyalty, person.popularity,
+            person.charm, person.eloquence, person.cunning, person.influence };
     }
 
     private static void SetStatic(Type type, string name, object value)

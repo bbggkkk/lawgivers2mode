@@ -26,11 +26,28 @@ if (Get-Process -Name 'Lawgivers II' -ErrorAction SilentlyContinue) { throw 'Clo
 
 $existingProxy = Join-Path $GamePath 'version.dll'
 $marker = Join-Path $GamePath '.lawgivers-control-loader'
-if ((Test-Path -LiteralPath $existingProxy) -and -not (Test-Path -LiteralPath $marker)) {
-  throw 'version.dll already exists and may belong to another mod loader. Remove it or install manually after checking compatibility.'
+$expectedProxy = Join-Path $root 'vendor\MelonLoader\version.dll'
+$loaderOwned = $true
+$reusedCompatibleLoader = $false
+if (Test-Path -LiteralPath $marker -PathType Leaf) {
+  try {
+    $markerData = Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json
+    if ($null -ne $markerData.LoaderOwned) { $loaderOwned = [bool]$markerData.LoaderOwned }
+  } catch { $loaderOwned = $true }
+}
+elseif (Test-Path -LiteralPath $existingProxy -PathType Leaf) {
+  $existingHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $existingProxy).Hash
+  $expectedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $expectedProxy).Hash
+  $existingLoader = Join-Path $GamePath 'MelonLoader\net472\MelonLoader.dll'
+  if ($existingHash -ne $expectedHash -or -not (Test-Path -LiteralPath $existingLoader -PathType Leaf)) {
+    throw 'version.dll belongs to an unknown or incompatible loader. The installer will not overwrite it.'
+  }
+  $loaderOwned = $false
+  $reusedCompatibleLoader = $true
+  Write-Output 'Compatible existing MelonLoader 0.7.3 x86 detected; reusing it without taking ownership.'
 }
 
-Copy-Item -LiteralPath (Join-Path $root 'vendor\MelonLoader\version.dll') -Destination $GamePath -Force
+Copy-Item -LiteralPath $expectedProxy -Destination $GamePath -Force
 Copy-Item -LiteralPath (Join-Path $root 'vendor\MelonLoader\MelonLoader') -Destination $GamePath -Recurse -Force
 $generator = Join-Path $GamePath 'MelonLoader\net6\Il2CppInterop.Generator.dll'
 if (Test-Path -LiteralPath $generator) {
@@ -75,5 +92,12 @@ if (Test-Path -LiteralPath $hostfxr) {
     Set-Content -LiteralPath $loaderConfig -Value "[loader]`r`nhostfxr_path_override = '$hostfxr'`r`n" -Encoding UTF8
   }
 }
-Set-Content -LiteralPath $marker -Value 'Lawgivers II Control 1.1.0 with MelonLoader 0.7.3 x86'
+$markerData = [ordered]@{
+  ModVersion = '1.2.0'
+  LoaderVersion = '0.7.3-x86'
+  LoaderOwned = $loaderOwned
+  ReusedCompatibleLoader = $reusedCompatibleLoader
+  ProxySha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $expectedProxy).Hash
+}
+Set-Content -LiteralPath $marker -Encoding UTF8 -Value ($markerData | ConvertTo-Json)
 Write-Output "Installed Lawgivers II Control to $GamePath"

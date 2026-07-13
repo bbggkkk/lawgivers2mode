@@ -7,6 +7,7 @@ $scripts = @(
   'install-online.ps1',
   'verify.ps1',
   'uninstall.ps1',
+  'tests\InstallerIntegrationTests.ps1',
   'build-release.ps1',
   'publish-release.ps1'
 )

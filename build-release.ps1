@@ -1,5 +1,5 @@
 param(
-  [string]$Version = '1.1.0',
+  [string]$Version = '1.2.0',
   [switch]$SkipBuild
 )
 
@@ -28,6 +28,7 @@ $required = @(
   'uninstall.ps1',
   'steam-path.ps1',
   'tests\InstallerTests.ps1',
+  'tests\InstallerIntegrationTests.ps1',
   'config.example.json',
   'README.md',
   'dist\LawgiversControl.dll',
@@ -60,8 +61,11 @@ try {
   }
   New-Item -ItemType Directory -Force -Path (Join-Path $packageRoot 'tests') | Out-Null
   Copy-Item -LiteralPath (Join-Path $root 'tests\InstallerTests.ps1') -Destination (Join-Path $packageRoot 'tests')
+  Copy-Item -LiteralPath (Join-Path $root 'tests\InstallerIntegrationTests.ps1') -Destination (Join-Path $packageRoot 'tests')
   Copy-Item -LiteralPath (Join-Path $root 'dist') -Destination $packageRoot -Recurse
-  Copy-Item -LiteralPath (Join-Path $root 'vendor') -Destination $packageRoot -Recurse
+  New-Item -ItemType Directory -Force -Path (Join-Path $packageRoot 'vendor') | Out-Null
+  Copy-Item -LiteralPath (Join-Path $root 'vendor\MelonLoader') -Destination (Join-Path $packageRoot 'vendor') -Recurse
+  Copy-Item -LiteralPath (Join-Path $root 'vendor\dotnet7-x86') -Destination (Join-Path $packageRoot 'vendor') -Recurse
 
   Compress-Archive -Path (Join-Path $packageRoot '*') -DestinationPath $temporaryZip -CompressionLevel Optimal
   Move-Item -LiteralPath $temporaryZip -Destination $asset -Force

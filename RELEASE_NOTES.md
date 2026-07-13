@@ -1,9 +1,15 @@
-# Lawgivers II Control 1.1.0
+# Lawgivers II Control 1.2.0
 
 Lawgivers II(Steam, Windows x86 IL2CPP)용 설정 기반 싱글플레이 모드입니다.
 
 ## 기능
 
+- 화면 우측 상단 `Control` 버튼으로 여는 Unity Canvas 인게임 제어 UI
+- 특정 인물의 모든 능력치·충성도 최대화
+- 특정 정당 소속 모든 인물의 모든 능력치·충성도 최대화
+- 개인·정당·국가 자금 입력값 추가
+- 플레이어 행동력 입력값 추가
+- 동일 SHA-256의 기존 MelonLoader 0.7.3 x86 공유 설치 지원
 - 특정 인물 또는 특정 정당 소속 인물의 능력치, 충성도, 재산, 정당 변경
 - 정당 자금과 플레이어 행동력 변경
 - 확률 판정 100% 성공 옵션

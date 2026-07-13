@@ -37,10 +37,19 @@ if (-not $hasRequestedTarget) { throw "No requested Lawgivers II Control install
 if (Test-Path -LiteralPath $mod -PathType Leaf) { Remove-Item -LiteralPath $mod -Force }
 if ($RemoveConfig -and (Test-Path -LiteralPath $config -PathType Container)) { Remove-Item -LiteralPath $config -Recurse -Force }
 if ($RemoveLoader -and (Test-Path -LiteralPath $marker -PathType Leaf)) {
+  $loaderOwned = $true
+  try {
+    $markerData = Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json
+    if ($null -ne $markerData.LoaderOwned) { $loaderOwned = [bool]$markerData.LoaderOwned }
+  } catch { $loaderOwned = $true }
   $proxy = Join-Path $GamePath 'version.dll'
   $loader = Join-Path $GamePath 'MelonLoader'
-  if (Test-Path -LiteralPath $proxy -PathType Leaf) { Remove-Item -LiteralPath $proxy -Force }
-  if (Test-Path -LiteralPath $loader -PathType Container) { Remove-Item -LiteralPath $loader -Recurse -Force }
+  if ($loaderOwned) {
+    if (Test-Path -LiteralPath $proxy -PathType Leaf) { Remove-Item -LiteralPath $proxy -Force }
+    if (Test-Path -LiteralPath $loader -PathType Container) { Remove-Item -LiteralPath $loader -Recurse -Force }
+  } else {
+    Write-Output 'Shared pre-existing MelonLoader retained.'
+  }
   Remove-Item -LiteralPath $marker -Force
 }
 Write-Output "Lawgivers II Control removed from $GamePath"

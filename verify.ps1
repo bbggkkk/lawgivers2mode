@@ -14,6 +14,7 @@ $installed = Join-Path $GamePath 'Mods\LawgiversControl.dll'
 $config = Join-Path $GamePath 'UserData\LawgiversControl\config.json'
 $report = Join-Path $GamePath 'UserData\LawgiversControl\last-apply.json'
 $runtimeReport = Join-Path $GamePath 'UserData\LawgiversControl\runtime-self-test.json'
+$uiRuntimeReport = Join-Path $GamePath 'UserData\LawgiversControl\ui-runtime.json'
 
 & (Join-Path $root 'tests\InstallerTests.ps1')
 if (-not $?) { throw 'Installer tests failed.' }
@@ -44,10 +45,16 @@ if ($RequireRuntimeSelfTest)
   $runtime = Get-Content -LiteralPath $runtimeReport -Raw | ConvertFrom-Json
   $checkProperties = @($runtime.Checks.PSObject.Properties)
   $failedChecks = @($checkProperties | Where-Object { $_.Value -ne $true })
-  if ($runtime.Passed -ne $true -or $runtime.Error -or $checkProperties.Count -lt 13 -or $failedChecks.Count -gt 0) {
+  if ($runtime.Passed -ne $true -or $runtime.Error -or $checkProperties.Count -lt 19 -or $failedChecks.Count -gt 0) {
     throw 'Runtime self-test report contains missing or failed checks.'
   }
   Write-Output "PASS: $($checkProperties.Count) IL2CPP runtime checks verified at $($runtime.GeneratedUtc)"
+  if (-not (Test-Path -LiteralPath $uiRuntimeReport)) { throw 'No retained UI runtime report exists. Launch the game and try again.' }
+  $uiRuntime = Get-Content -LiteralPath $uiRuntimeReport -Raw | ConvertFrom-Json
+  foreach ($property in @('Created', 'Canvas', 'ToggleButton', 'Panel', 'EventSystemFound', 'ButtonCallback')) {
+    if ($uiRuntime.$property -ne $true) { throw "Retained UI runtime check failed: $property" }
+  }
+  Write-Output "PASS: retained UI and native button callback verified at $($uiRuntime.GeneratedUtc)"
 }
 
 Write-Output "PASS: distribution build, logic tests, configuration, and installed SHA-256 verified."

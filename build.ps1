@@ -4,15 +4,11 @@ $refs = Join-Path $root 'vendor\MelonLoader\MelonLoader\net472'
 $out = Join-Path $root 'dist'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
-& 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe' `
-  /nologo /target:library /optimize+ `
-  /out:"$out\LawgiversControl.dll" `
-  /reference:"$refs\MelonLoader.dll" `
-  /reference:"$refs\0Harmony.dll" `
-  /reference:"$refs\Newtonsoft.Json.dll" `
-  "$root\src\LawgiversControlMod.cs"
-
+& dotnet restore "$root\LawgiversControl.csproj" --ignore-failed-sources
+if ($LASTEXITCODE -ne 0) { throw "C# restore failed with exit code $LASTEXITCODE" }
+& dotnet build "$root\LawgiversControl.csproj" -c Release --no-restore
 if ($LASTEXITCODE -ne 0) { throw "C# compilation failed with exit code $LASTEXITCODE" }
+Copy-Item -LiteralPath "$root\bin\Release\net6.0\LawgiversControl.dll" -Destination "$out\LawgiversControl.dll" -Force
 & 'C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe' `
   /nologo /target:exe /optimize+ `
   /out:"$out\DisableXrefScan.exe" `

@@ -1,4 +1,4 @@
-# Lawgivers II Control 1.1.0 라이브 테스트
+# Lawgivers II Control 1.2.0 라이브 테스트
 
 ## 화면 없는 런타임 자가진단
 
@@ -33,3 +33,13 @@ powershell -ExecutionPolicy Bypass -File .\verify.ps1 -RequireLiveReport
    - `Nations[].Armies`, `ArmyUnits`, `Missiles`
 
 테스트가 끝나면 `ForceProbabilitySuccess`를 다시 `false`로 바꾸십시오. 실제 저장에 적용하기 전에는 `config.json`과 저장 파일을 별도로 백업하는 것이 안전합니다.
+
+## 인게임 UI 테스트
+
+1. 싱글플레이 저장 게임을 불러오고 화면 우측 상단 `Control` 버튼으로 메뉴를 엽니다.
+2. `인물`에서 한 명을 선택하고 최대화 버튼과 개인 자금 추가 버튼을 실행합니다.
+3. `정당 전체`에서 정당을 선택하고 전체 최대화 버튼을 실행한 뒤 소속자 전원의 능력치와 충성도를 확인합니다.
+4. `국가`에서 국가 자금을 추가하고 `행동력`에서 행동력을 추가합니다.
+5. 메뉴 상태 줄과 `UserData\LawgiversControl\last-apply.json`의 실제값을 확인합니다.
+6. `Control` 또는 닫기 버튼으로 메뉴가 정상적으로 닫히는지 확인합니다.
+7. `UserData\LawgiversControl\ui-runtime.json`의 `Created`, `Canvas`, `ToggleButton`, `Panel`, `ButtonCallback`이 모두 `true`인지 확인합니다.
