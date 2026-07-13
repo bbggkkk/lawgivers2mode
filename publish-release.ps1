@@ -1,7 +1,8 @@
 param(
   [string]$Version = '1.1.0',
   [string]$Repository = 'bbggkkk/lawgivers2mode',
-  [string]$NotesPath = (Join-Path $PSScriptRoot 'RELEASE_NOTES.md')
+  [string]$NotesPath = (Join-Path $PSScriptRoot 'RELEASE_NOTES.md'),
+  [switch]$SkipPackageBuild
 )
 
 $ErrorActionPreference = 'Stop'
@@ -16,6 +17,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Run gh auth login first.' }
 $tag = 'v' + $Version.TrimStart('v')
 $assetName = 'Lawgivers-II-Control-' + $Version.TrimStart('v') + '.zip'
 $asset = Join-Path $PSScriptRoot ('release\' + $assetName)
+if (-not $SkipPackageBuild) {
+  & (Join-Path $PSScriptRoot 'build-release.ps1') -Version $Version
+}
 if (-not (Test-Path -LiteralPath $asset)) { throw "Release ZIP not found: $asset" }
 if (-not (Test-Path -LiteralPath $NotesPath)) { throw "Release notes not found: $NotesPath" }
 

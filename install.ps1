@@ -1,11 +1,27 @@
 param(
-  [string]$GamePath = 'C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II'
+  [string]$GamePath,
+  [switch]$Elevated
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$pathHelper = Join-Path $root 'steam-path.ps1'
+if (-not (Test-Path -LiteralPath $pathHelper -PathType Leaf)) { throw "Installer path helper not found: $pathHelper" }
+. $pathHelper
+$GamePath = Resolve-LawgiversGamePath -GamePath $GamePath
+
+if (-not (Test-IsAdministrator) -and -not (Test-DirectoryWritable -Path $GamePath)) {
+  if ($Elevated) { throw "Administrator access is required to install to $GamePath" }
+  $arguments = @(
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Quote-NativeArgument $PSCommandPath),
+    '-GamePath', (Quote-NativeArgument $GamePath), '-Elevated'
+  )
+  $process = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList ($arguments -join ' ')
+  if ($process.ExitCode -ne 0) { throw "Elevated installer failed with exit code $($process.ExitCode)." }
+  return
+}
+
 $exe = Join-Path $GamePath 'Lawgivers II.exe'
-if (-not (Test-Path -LiteralPath $exe)) { throw "Lawgivers II.exe not found at $GamePath" }
 if (Get-Process -Name 'Lawgivers II' -ErrorAction SilentlyContinue) { throw 'Close Lawgivers II before installing.' }
 
 $existingProxy = Join-Path $GamePath 'version.dll'

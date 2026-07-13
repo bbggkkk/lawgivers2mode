@@ -3,10 +3,10 @@
 ## 원라인 설치
 
 ```powershell
-$p="$env:TEMP\LawgiversControl-install.ps1"; iwr 'https://raw.githubusercontent.com/bbggkkk/lawgivers2mode/main/install-online.ps1' -OutFile $p; & $p
+$p="$env:TEMP\LawgiversControl-install.ps1"; iwr 'https://raw.githubusercontent.com/bbggkkk/lawgivers2mode/main/install-online.ps1' -OutFile $p; powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p
 ```
 
-설치기는 최신 [GitHub Release](https://github.com/bbggkkk/lawgivers2mode/releases/latest)를 내려받아 SHA-256을 검증하고 설치합니다. 기존 `config.json`은 보존됩니다. 저장소에 첫 Release가 게시된 뒤부터 이 명령을 사용할 수 있습니다.
+설치기는 최신 [GitHub Release](https://github.com/bbggkkk/lawgivers2mode/releases/latest)를 내려받아 SHA-256을 검증하고 설치합니다. Steam App ID `1407180`을 사용하여 모든 Steam 라이브러리에서 게임 위치를 자동 탐색하며, 찾지 못하면 파일 선택 창 없이 오류를 출력합니다. 기존 `config.json`은 보존됩니다.
 
 Lawgivers II의 인물·정당·플레이어·군사 데이터를 JSON 설정으로 변경하는 싱글플레이용 모드입니다.
 
@@ -32,19 +32,25 @@ Lawgivers II의 인물·정당·플레이어·군사 데이터를 JSON 설정으
 
 ## 설치
 
-게임을 종료한 뒤 이 폴더에서 관리자 PowerShell로 실행합니다.
+게임을 종료한 뒤 이 폴더에서 PowerShell로 실행합니다. Steam 설치 위치는 자동으로 찾으며 쓰기 권한이 필요한 경우 관리자 권한을 요청합니다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
+Steam 외 위치이거나 자동 탐색이 실패하면 경로를 명시할 수 있습니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -GamePath 'D:\Games\Lawgivers II'
+```
+
 게임을 실행하면 다음 파일을 사용합니다.
 
-- `C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II\UserData\LawgiversControl\config.json`: 변경 규칙
-- `C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II\UserData\LawgiversControl\catalog.json`: 현재 게임의 인물·정당·국가 이름과 ID
-- `C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II\UserData\LawgiversControl\last-apply.json`: 적용 직후 다시 읽은 실제 인물·정당·행동력·군사 값
-- `C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II\UserData\LawgiversControl\runtime-self-test.json`: 실제 IL2CPP 객체를 사용한 비파괴 런타임 자가진단 결과
-- `C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II\MelonLoader\Latest.log`: 모드 실행 로그
+- `<게임 경로>\UserData\LawgiversControl\config.json`: 변경 규칙
+- `<게임 경로>\UserData\LawgiversControl\catalog.json`: 현재 게임의 인물·정당·국가 이름과 ID
+- `<게임 경로>\UserData\LawgiversControl\last-apply.json`: 적용 직후 다시 읽은 실제 인물·정당·행동력·군사 값
+- `<게임 경로>\UserData\LawgiversControl\runtime-self-test.json`: 실제 IL2CPP 객체를 사용한 비파괴 런타임 자가진단 결과
+- `<게임 경로>\MelonLoader\Latest.log`: 모드 실행 로그
 
 게임 장면이 로드되거나 저장 게임 로드가 감지된 뒤 게임 주차가 처음 갱신될 때 최신 `config.json`을 읽어 적용합니다. 실행 중 설정을 바꾼 경우 저장 게임이나 메인 메뉴를 다시 불러오십시오. 호환성 때문에 이 빌드에서는 1초 폴링이 보장되지 않습니다.
 

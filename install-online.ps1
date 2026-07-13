@@ -1,41 +1,13 @@
 param(
   [string]$Repository = 'bbggkkk/lawgivers2mode',
   [string]$Version,
-  [string]$GamePath = 'C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II',
+  [string]$GamePath,
   [string]$PackagePath,
-  [string]$ChecksumPath,
-  [switch]$Elevated
+  [string]$ChecksumPath
 )
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-function Test-IsAdministrator {
-  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-  $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-  return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-}
-
-function Quote-Argument([string]$Value) {
-  return '"' + $Value.Replace('"', '\"') + '"'
-}
-
-$programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
-$requiresElevation = $GamePath.StartsWith($programFilesX86, [StringComparison]::OrdinalIgnoreCase)
-if ($requiresElevation -and -not (Test-IsAdministrator) -and -not $Elevated) {
-  if ([string]::IsNullOrWhiteSpace($PSCommandPath)) {
-    throw 'Save this bootstrap to a file before running it so elevation can be requested.'
-  }
-  $arguments = @(
-    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Quote-Argument $PSCommandPath),
-    '-Repository', (Quote-Argument $Repository), '-GamePath', (Quote-Argument $GamePath), '-Elevated'
-  )
-  if ($Version) { $arguments += @('-Version', (Quote-Argument $Version)) }
-  if ($PackagePath) { $arguments += @('-PackagePath', (Quote-Argument $PackagePath)) }
-  if ($ChecksumPath) { $arguments += @('-ChecksumPath', (Quote-Argument $ChecksumPath)) }
-  $process = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList ($arguments -join ' ')
-  exit $process.ExitCode
-}
 
 $work = Join-Path ([IO.Path]::GetTempPath()) ('LawgiversControl-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work | Out-Null
@@ -79,11 +51,15 @@ try {
   Expand-Archive -LiteralPath $zip -DestinationPath $extract
   $installers = @(Get-ChildItem -LiteralPath $extract -Filter install.ps1 -File -Recurse)
   if ($installers.Count -ne 1) { throw "Expected exactly one install.ps1, found $($installers.Count)." }
-  & $installers[0].FullName -GamePath $GamePath
+  $installArguments = @{}
+  if (-not [string]::IsNullOrWhiteSpace($GamePath)) { $installArguments.GamePath = $GamePath }
+  & $installers[0].FullName @installArguments
 
   $verify = Join-Path $installers[0].DirectoryName 'verify.ps1'
   if (Test-Path -LiteralPath $verify) {
-    & $verify -GamePath $GamePath
+    $verifyArguments = @{}
+    if (-not [string]::IsNullOrWhiteSpace($GamePath)) { $verifyArguments.GamePath = $GamePath }
+    & $verify @verifyArguments
   }
   Write-Output 'Lawgivers II Control installation completed.'
 }

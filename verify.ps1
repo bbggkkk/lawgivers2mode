@@ -1,16 +1,22 @@
 param(
-  [string]$GamePath = 'C:\Program Files (x86)\Steam\steamapps\common\Lawgivers II',
+  [string]$GamePath,
   [switch]$RequireLiveReport,
   [switch]$RequireRuntimeSelfTest
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$pathHelper = Join-Path $root 'steam-path.ps1'
+if (-not (Test-Path -LiteralPath $pathHelper -PathType Leaf)) { throw "Verification path helper not found: $pathHelper" }
+. $pathHelper
+$GamePath = Resolve-LawgiversGamePath -GamePath $GamePath
 $installed = Join-Path $GamePath 'Mods\LawgiversControl.dll'
 $config = Join-Path $GamePath 'UserData\LawgiversControl\config.json'
 $report = Join-Path $GamePath 'UserData\LawgiversControl\last-apply.json'
 $runtimeReport = Join-Path $GamePath 'UserData\LawgiversControl\runtime-self-test.json'
 
+& (Join-Path $root 'tests\InstallerTests.ps1')
+if (-not $?) { throw 'Installer tests failed.' }
 & (Join-Path $root 'dist\ModLogicTests.exe')
 if ($LASTEXITCODE -ne 0) { throw "Logic tests failed with exit code $LASTEXITCODE." }
 
