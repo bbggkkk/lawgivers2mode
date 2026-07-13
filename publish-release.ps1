@@ -6,6 +6,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $gh = (Get-Command gh.exe -ErrorAction SilentlyContinue).Source
+if (-not $gh -and (Test-Path -LiteralPath 'C:\Program Files\GitHub CLI\gh.exe')) {
+  $gh = 'C:\Program Files\GitHub CLI\gh.exe'
+}
 if (-not $gh) { throw 'GitHub CLI (gh) is required: https://cli.github.com/' }
 & $gh auth status
 if ($LASTEXITCODE -ne 0) { throw 'Run gh auth login first.' }
