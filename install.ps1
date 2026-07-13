@@ -93,7 +93,7 @@ if (Test-Path -LiteralPath $hostfxr) {
   }
 }
 $markerData = [ordered]@{
-  ModVersion = '1.2.0'
+  ModVersion = '1.2.1'
   LoaderVersion = '0.7.3-x86'
   LoaderOwned = $loaderOwned
   ReusedCompatibleLoader = $reusedCompatibleLoader

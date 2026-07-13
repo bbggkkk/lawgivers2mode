@@ -1,10 +1,11 @@
-# Lawgivers II Control 1.2.0
+# Lawgivers II Control 1.2.1
 
 Lawgivers II(Steam, Windows x86 IL2CPP)용 설정 기반 싱글플레이 모드입니다.
 
 ## 기능
 
-- 화면 우측 상단 `Control` 버튼으로 여는 Unity Canvas 인게임 제어 UI
+- 게임 좌측 패널에 자연스럽게 이어지는 주황색 `CHEAT` 탭과 회색 반투명 제어 UI
+- 게임의 실제 TextMeshPro 한글 폰트와 공유 머티리얼 재사용
 - 특정 인물의 모든 능력치·충성도 최대화
 - 특정 정당 소속 모든 인물의 모든 능력치·충성도 최대화
 - 개인·정당·국가 자금 입력값 추가

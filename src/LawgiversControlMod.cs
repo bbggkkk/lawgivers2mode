@@ -9,7 +9,7 @@ using HarmonyLib;
 using MelonLoader;
 using Newtonsoft.Json;
 
-[assembly: MelonInfo(typeof(LawgiversControl.LawgiversControlMod), "Lawgivers II Control", "1.2.0", "OpenAI")]
+[assembly: MelonInfo(typeof(LawgiversControl.LawgiversControlMod), "Lawgivers II Control", "1.2.1", "OpenAI")]
 [assembly: MelonGame("SomniumSoft", "Lawgivers II")]
 
 namespace LawgiversControl

@@ -51,7 +51,7 @@ if ($RequireRuntimeSelfTest)
   Write-Output "PASS: $($checkProperties.Count) IL2CPP runtime checks verified at $($runtime.GeneratedUtc)"
   if (-not (Test-Path -LiteralPath $uiRuntimeReport)) { throw 'No retained UI runtime report exists. Launch the game and try again.' }
   $uiRuntime = Get-Content -LiteralPath $uiRuntimeReport -Raw | ConvertFrom-Json
-  foreach ($property in @('Created', 'Canvas', 'ToggleButton', 'Panel', 'EventSystemFound', 'ButtonCallback')) {
+  foreach ($property in @('Created', 'Canvas', 'ToggleButton', 'Panel', 'EventSystemFound', 'ButtonCallback', 'FontLoaded', 'FontMaterial')) {
     if ($uiRuntime.$property -ne $true) { throw "Retained UI runtime check failed: $property" }
   }
   Write-Output "PASS: retained UI and native button callback verified at $($uiRuntime.GeneratedUtc)"
