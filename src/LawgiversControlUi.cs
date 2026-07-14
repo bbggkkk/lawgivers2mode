@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using HarmonyLib;
 using MelonLoader;
 using Newtonsoft.Json;
 using UnityEngine;
@@ -13,405 +13,303 @@ namespace LawgiversControl
 {
     public sealed partial class LawgiversControlMod
     {
-        private const int UiPageSize = 7;
-        private const float UiContentWidth = 488f;
-        private static readonly Color CheatAccent = new Color(0.92f, 0.36f, 0.16f, 1f);
-        private static readonly Color CheatAccentDark = new Color(0.72f, 0.22f, 0.10f, 1f);
-        private static readonly Color PanelColor = new Color(0.78f, 0.79f, 0.80f, 0.96f);
-        private static readonly Color ControlColor = new Color(0.42f, 0.44f, 0.47f, 0.96f);
-        private static readonly Color ControlSelectedColor = new Color(0.22f, 0.39f, 0.58f, 1f);
-        private static readonly Color TextColor = new Color(0.12f, 0.13f, 0.15f, 1f);
-        private GameObject _uiRoot;
-        private GameObject _uiPanel;
-        private RectTransform _uiContent;
+        private static readonly Color IntegratedButtonColor = new Color(0.32f, 0.33f, 0.35f, 0.98f);
+        private static readonly Color IntegratedAccentColor = new Color(0.92f, 0.36f, 0.16f, 1f);
+        private static readonly Dictionary<IntPtr, Action> IntegratedCallbacks = new Dictionary<IntPtr, Action>();
+        private static LawgiversControlMod _uiOwner;
+        private static bool _integratedHooksPatched;
+        private static bool _buttonHookPatched;
+        private static object _partyMembersOpening;
+        private static object _partyMembersContext;
+        private static object _partyMemberList;
         private object _uiFont;
         private object _uiFontMaterial;
-        private string _uiFontSource;
-        private static readonly Dictionary<IntPtr, Action> UiCallbacks = new Dictionary<IntPtr, Action>();
-        private static bool _buttonHookPatched;
-        private static bool _textReadyHookPatched;
-        private static LawgiversControlMod _uiOwner;
-        private static bool _uiCreationPending;
-        private bool _uiCreating;
-        private readonly List<IntPtr> _contentButtonPointers = new List<IntPtr>();
-        private int _uiTab;
-        private int _personPage;
-        private int _partyPage;
-        private int _nationPage;
-        private int? _selectedPersonId;
-        private int? _selectedPartyId;
-        private int? _selectedNationId;
-        private string _personMoneyInput = "1000000";
-        private string _partyMoneyInput = "1000000";
-        private string _nationMoneyInput = "1000000";
-        private string _actionPointsInput = "10";
-        private string _uiStatus = "패널 옆 CHEAT 탭으로 메뉴를 열고 닫을 수 있습니다.";
 
         partial void EnsureControlUi()
         {
             _uiOwner = this;
+            if (_integratedHooksPatched || _harmony == null)
+                return;
+
             try
             {
-                EnsureTextReadyHook();
-                if (_uiCreating)
-                    return;
-                if (_uiRoot != null)
-                {
-                    object refreshedFont = FindGameUiFont();
-                    if (refreshedFont != null)
-                    {
-                        _uiFont = refreshedFont;
-                        MelonLogger.Msg("Control UI font refreshed from: " + _uiFontSource);
-                    }
-                    RebuildUi();
-                    return;
-                }
-
-                object discoveredFont = FindGameUiFont();
-                if (discoveredFont != null)
-                    _uiFont = discoveredFont;
-                if (_uiFont == null)
-                {
-                    MelonLogger.Msg("Control UI is waiting for the game TextMeshPro font.");
-                    return;
-                }
-                _uiCreating = true;
                 EnsureButtonHook();
-                _uiRoot = new GameObject("LawgiversControl.Canvas");
-                UnityEngine.Object.DontDestroyOnLoad(_uiRoot);
-                Canvas canvas = _uiRoot.AddComponent<Canvas>();
-                Set(canvas, "renderMode", RenderMode.ScreenSpaceOverlay);
-                Set(canvas, "sortingOrder", 32760);
-                CanvasScaler scaler = _uiRoot.AddComponent<CanvasScaler>();
-                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                scaler.referenceResolution = new Vector2(1920f, 1080f);
-                scaler.matchWidthOrHeight = 1f;
-                _uiRoot.AddComponent<GraphicRaycaster>();
+                Type personAttributes = FindType("Il2CppLawgivers.Interface.UIPersonAttributes");
+                Type partyMembers = FindType("Il2CppLawgivers.Interface.UIPartyMembers");
+                Type uiList = FindType("Il2CppLawgivers.Interface.UIList");
+                if (personAttributes == null || partyMembers == null || uiList == null)
+                    throw new TypeLoadException("Required Lawgivers UI types are not loaded yet.");
 
-                Button toggle = CreateButton(_uiRoot.transform, "CHEAT", new Vector2(532f, -72f), new Vector2(112f, 42f), delegate
-                {
-                    _menuVisible = !_menuVisible;
-                    _uiPanel.SetActive(_menuVisible);
-                    if (_menuVisible) RebuildUi();
-                }, CheatAccent);
-                _uiPanel = CreateRect("Panel", _uiRoot.transform, new Vector2(12f, -72f), new Vector2(520f, 820f), new Vector2(0f, 1f));
-                Image panelImage = _uiPanel.AddComponent<Image>();
-                panelImage.color = PanelColor;
-                Outline panelOutline = _uiPanel.AddComponent<Outline>();
-                panelOutline.effectColor = new Color(0.26f, 0.27f, 0.29f, 0.85f);
-                panelOutline.effectDistance = new Vector2(2f, -2f);
-                _uiContent = CreateRect("Content", _uiPanel.transform, new Vector2(16f, -14f), new Vector2(UiContentWidth, 792f), new Vector2(0f, 1f)).GetComponent<RectTransform>();
-                _uiPanel.SetActive(_menuVisible);
-                RebuildUi();
+                PatchPostfix(personAttributes, "RefreshAlways", "PersonAttributesRefreshPostfix");
+                PatchPrefix(partyMembers, "ButtonPeople", "PartyMembersButtonPrefix");
+                PatchPostfix(partyMembers, "ButtonPeople", "PartyMembersButtonPostfix");
+                PatchPostfix(uiList, "RefreshAlways", "UiListRefreshPostfix");
+                foreach (MethodInfo open in uiList.GetMethods(All).Where(m => m.Name == "Open" && m.DeclaringType == uiList))
+                    _harmony.Patch(open, postfix: new HarmonyMethod(typeof(LawgiversControlMod).GetMethod("UiListOpenPostfix", All)));
 
-                bool buttonCallback = false;
-                Button testButton = CreateButton(_uiRoot.transform, "CallbackTest", new Vector2(-10000f, -10000f), new Vector2(1f, 1f), delegate { buttonCallback = true; }, CheatAccent);
-                Invoke(testButton, "Press");
-                UiCallbacks.Remove(ButtonPointer(testButton));
-                UnityEngine.Object.Destroy(testButton.gameObject);
-
-                bool eventSystemFound = FindType("UnityEngine.EventSystems.EventSystem") != null;
-                string report = Path.Combine(_directory, "ui-runtime.json");
-                File.WriteAllText(report, JsonConvert.SerializeObject(new
-                {
-                    GeneratedUtc = DateTime.UtcNow,
-                    Created = true,
-                    Canvas = canvas != null,
-                    ToggleButton = toggle != null,
-                    Panel = _uiPanel != null,
-                    EventSystemFound = eventSystemFound,
-                    ButtonCallback = buttonCallback,
-                    FontLoaded = _uiFont != null,
-                    FontName = _uiFont == null ? null : Text(Get(_uiFont, "name")),
-                    FontSource = _uiFontSource,
-                    FontMaterial = _uiFontMaterial != null,
-                    Theme = "LawgiversGreyCheatAccent"
-                }, Formatting.Indented));
-                MelonLogger.Msg("Control retained UI created successfully (EventSystem=" + eventSystemFound + ").");
+                _integratedHooksPatched = true;
+                WriteIntegratedUiReport("hooks-installed", null);
+                MelonLogger.Msg("Context-integrated person and party controls enabled.");
             }
             catch (Exception ex)
             {
-                MelonLogger.Error("Control retained UI creation failed: " + ex);
-            }
-            finally
-            {
-                _uiCreating = false;
+                MelonLogger.Warning("Context UI hooks are not ready: " + ex.Message);
             }
         }
 
-        private void RebuildUi()
+        private static void PatchPrefix(Type type, string methodName, string patchName)
         {
-            if (_uiContent == null)
+            MethodInfo method = type.GetMethod(methodName, All);
+            if (method == null)
+                throw new MissingMethodException(type.FullName, methodName);
+            _harmony.Patch(method, prefix: new HarmonyMethod(typeof(LawgiversControlMod).GetMethod(patchName, All)));
+        }
+
+        private static void PatchPostfix(Type type, string methodName, string patchName)
+        {
+            MethodInfo method = type.GetMethod(methodName, All);
+            if (method == null)
+                throw new MissingMethodException(type.FullName, methodName);
+            _harmony.Patch(method, postfix: new HarmonyMethod(typeof(LawgiversControlMod).GetMethod(patchName, All)));
+        }
+
+        private static void PersonAttributesRefreshPostfix(object __instance)
+        {
+            try { _uiOwner?.AttachPersonMaxButton(__instance); }
+            catch (Exception ex) { MelonLogger.Error("Person cheat button failed: " + ex); }
+        }
+
+        private static void PartyMembersButtonPrefix(object __instance)
+        {
+            _partyMembersOpening = __instance;
+            _partyMembersContext = __instance;
+            _partyMemberList = null;
+        }
+
+        private static void UiListOpenPostfix(object __instance)
+        {
+            if (_partyMembersOpening != null)
+                _partyMemberList = __instance;
+        }
+
+        private static void PartyMembersButtonPostfix(object __instance)
+        {
+            try
+            {
+                if (_partyMemberList != null)
+                    _uiOwner?.AttachPartyMaxButton(__instance, _partyMemberList);
+            }
+            catch (Exception ex) { MelonLogger.Error("Party cheat button failed: " + ex); }
+            finally { _partyMembersOpening = null; }
+        }
+
+        private static void UiListRefreshPostfix(object __instance)
+        {
+            try
+            {
+                if (_partyMemberList != null && SameNativeObject(__instance, _partyMemberList) && _partyMembersContext != null)
+                    _uiOwner?.AttachPartyMaxButton(_partyMembersContext, __instance);
+            }
+            catch (Exception ex) { MelonLogger.Error("Party list cheat refresh failed: " + ex); }
+        }
+
+        private void AttachPersonMaxButton(object attributes)
+        {
+            Transform root = Get(attributes, "transform") as Transform;
+            if (root == null)
                 return;
-            for (int i = _uiContent.childCount - 1; i >= 0; i--)
-                UnityEngine.Object.Destroy(_uiContent.GetChild(i).gameObject);
-            foreach (IntPtr pointer in _contentButtonPointers)
-                UiCallbacks.Remove(pointer);
-            _contentButtonPointers.Clear();
 
-            float y = 0f;
-            object title = CreateText(_uiContent, "CHEAT CONTROL", new Vector2(0f, -y), new Vector2(290f, 34f), 22, TextAnchor.MiddleLeft, FontStyle.Bold);
-            Set(title, "color", CheatAccentDark);
-            object warning = CreateText(_uiContent, "SINGLE PLAYER MOD", new Vector2(292f, -y), new Vector2(138f, 34f), 12, TextAnchor.MiddleRight, FontStyle.Bold);
-            Set(warning, "color", CheatAccentDark);
-            AddButton("X", new Vector2(440f, -y), new Vector2(48f, 34f), delegate { _menuVisible = false; _uiPanel.SetActive(false); }, CheatAccentDark);
-            y += 42f;
-            AddRowButton("인물", 0, ref y, 0f, 88f);
-            AddRowButton("정당 전체", 1, ref y, 94f, 116f);
-            AddRowButton("국가", 2, ref y, 216f, 78f);
-            AddRowButton("행동력", 3, ref y, 300f, 92f);
-            y += 45f;
-            AddStatus("!  " + _uiStatus, ref y);
-
-            Type instanceType;
-            object world;
-            List<object> people;
-            List<object> parties;
-            List<object> nations;
-            if (!TryGetWorld(out instanceType, out world, out people, out parties, out nations))
+            bool layout = root.gameObject.GetComponent<VerticalLayoutGroup>() != null;
+            Transform target = root;
+            RectTransform reference = null;
+            if (!layout)
             {
-                AddLabel("싱글플레이 저장 게임을 불러오면 제어 항목이 표시됩니다.", ref y, 18, FontStyle.Normal);
+                Transform cunning = Get(Get(attributes, "Cunning"), "transform") as Transform;
+                Transform statRow = cunning == null ? null : cunning.parent;
+                if (statRow is RectTransform && statRow.parent != null)
+                {
+                    reference = (RectTransform)statRow;
+                    target = statRow.parent;
+                }
+            }
+            if (FindDirectChild(target, "LawgiversControl.PersonMax") != null)
                 return;
-            }
-            if (_uiTab == 0) BuildPersonUi(instanceType, people, parties, nations, ref y);
-            else if (_uiTab == 1) BuildPartyUi(instanceType, people, parties, nations, ref y);
-            else if (_uiTab == 2) BuildNationUi(instanceType, people, parties, nations, ref y);
-            else BuildActionUi(instanceType, people, parties, nations, ref y);
-        }
 
-        private void BuildPersonUi(Type instanceType, List<object> people, List<object> parties, List<object> nations, ref float y)
-        {
-            AddLabel("특정 인물을 선택한 뒤 즉시 적용합니다.", ref y, 18, FontStyle.Bold);
-            List<object> ordered = people.OrderBy(FriendlyName).ToList();
-            AddPager(ordered.Count, ref _personPage, ref y);
-            foreach (object person in ordered.Skip(_personPage * UiPageSize).Take(UiPageSize))
+            AcquireFont(target);
+            if (_uiFont == null)
+                return;
+
+            GameObject row = CreateIntegratedButton(target, "LawgiversControl.PersonMax", "CHEAT  ·  모두 최대", delegate
             {
-                object captured = person;
-                int id = ToInt(Get(person, "id"), -1);
-                AddFullButton((_selectedPersonId == id ? "▶ " : "") + FriendlyName(person) + "  (#" + id + ")", ref y, delegate { _selectedPersonId = ToInt(Get(captured, "id"), -1); RebuildUi(); });
-            }
-            object selected = ordered.FirstOrDefault(p => ToInt(Get(p, "id"), -1) == _selectedPersonId);
-            if (selected == null) { AddLabel("선택된 인물이 없습니다.", ref y, 18, FontStyle.Normal); return; }
-            AddLabel("선택: " + FriendlyName(selected) + " | 개인 자금: " + ToLong(Get(selected, "Wealth", "wealth"), 0).ToString("N0", CultureInfo.InvariantCulture), ref y, 17, FontStyle.Normal);
-            object target = selected;
-            AddActionButton("MAX  모든 능력치 + 충성도 최대", ref y, delegate
-            {
-                int changed = MaxPersonAttributes(target);
-                _uiStatus = FriendlyName(target) + ": " + changed + "개 능력치를 최대화했습니다.";
-                RefreshApplyReport(instanceType, people, parties, nations); RebuildUi();
+                object person = Get(attributes, "Person");
+                if (person == null)
+                {
+                    MelonLogger.Warning("The person window no longer has a selected person.");
+                    return;
+                }
+                int changed = MaxPersonAttributes(person);
+                Invoke(attributes, "RefreshAlways");
+                MelonLogger.Msg(FriendlyName(person) + ": maximized " + changed + " attributes.");
             });
-            object input = AddInput(_personMoneyInput, ref y);
-            AddActionButton("ADD  입력값만큼 개인 자금 추가", ref y, delegate { _personMoneyInput = Text(Get(input, "text")); RunMoney("개인 자금", _personMoneyInput, delegate(long amount, out long result) { return AddPersonMoney(target, amount, out result); }, instanceType, people, parties, nations); });
-        }
 
-        private void BuildPartyUi(Type instanceType, List<object> people, List<object> parties, List<object> nations, ref float y)
-        {
-            AddLabel("정당 소속 모든 인물에게 즉시 적용합니다.", ref y, 18, FontStyle.Bold);
-            List<object> ordered = parties.OrderBy(FriendlyName).ToList();
-            AddPager(ordered.Count, ref _partyPage, ref y);
-            foreach (object party in ordered.Skip(_partyPage * UiPageSize).Take(UiPageSize))
+            RectTransform rect = row.GetComponent<RectTransform>();
+            if (layout)
             {
-                object captured = party; int id = ToInt(Get(party, "id"), -1);
-                AddFullButton((_selectedPartyId == id ? "▶ " : "") + FriendlyName(party) + "  (#" + id + ")", ref y, delegate { _selectedPartyId = ToInt(Get(captured, "id"), -1); RebuildUi(); });
+                LayoutElement element = row.AddComponent<LayoutElement>();
+                element.minHeight = 42f;
+                element.preferredHeight = 42f;
+                element.flexibleWidth = 1f;
+                row.transform.SetAsLastSibling();
             }
-            object selected = ordered.FirstOrDefault(p => ToInt(Get(p, "id"), -1) == _selectedPartyId);
-            if (selected == null) { AddLabel("선택된 정당이 없습니다.", ref y, 18, FontStyle.Normal); return; }
-            int partyId = ToInt(Get(selected, "id"), int.MinValue);
-            AddLabel("선택: " + FriendlyName(selected) + " | 소속: " + people.Count(p => ToInt(Get(p, "PartyID", "partyID"), int.MinValue) == partyId) + "명 | 자금: " + ToLong(Get(Get(selected, "money"), "value"), 0).ToString("N0", CultureInfo.InvariantCulture), ref y, 17, FontStyle.Normal);
-            object target = selected;
-            AddActionButton("MAX  소속 전원 능력치 + 충성도 최대", ref y, delegate
+            else
             {
-                int persons; int attrs = MaxPartyMemberAttributes(target, people, out persons);
-                _uiStatus = FriendlyName(target) + ": " + persons + "명 / " + attrs + "개 능력치를 최대화했습니다.";
-                RefreshApplyReport(instanceType, people, parties, nations); RebuildUi();
-            });
-            object input = AddInput(_partyMoneyInput, ref y);
-            AddActionButton("ADD  입력값만큼 정당 자금 추가", ref y, delegate { _partyMoneyInput = Text(Get(input, "text")); RunMoney("정당 자금", _partyMoneyInput, delegate(long amount, out long result) { return AddPartyMoney(target, amount, out result); }, instanceType, people, parties, nations); });
-        }
-
-        private void BuildNationUi(Type instanceType, List<object> people, List<object> parties, List<object> nations, ref float y)
-        {
-            AddLabel("국가를 선택하고 추가할 금액을 입력합니다.", ref y, 18, FontStyle.Bold);
-            List<object> ordered = nations.OrderBy(FriendlyName).ToList();
-            AddPager(ordered.Count, ref _nationPage, ref y);
-            foreach (object nation in ordered.Skip(_nationPage * UiPageSize).Take(UiPageSize))
-            {
-                object captured = nation; int id = ToInt(Get(nation, "id"), -1);
-                AddFullButton((_selectedNationId == id ? "▶ " : "") + FriendlyName(nation) + "  (#" + id + ")", ref y, delegate { _selectedNationId = ToInt(Get(captured, "id"), -1); RebuildUi(); });
+                if (reference != null)
+                {
+                    rect.anchorMin = reference.anchorMin;
+                    rect.anchorMax = reference.anchorMax;
+                    rect.pivot = reference.pivot;
+                    float height = Math.Max(36f, Math.Abs(reference.rect.height));
+                    rect.anchoredPosition = reference.anchoredPosition + new Vector2(0f, -(height + 8f));
+                    rect.sizeDelta = new Vector2(reference.sizeDelta.x, 42f);
+                }
+                else
+                {
+                    rect.anchorMin = new Vector2(0f, 0f);
+                    rect.anchorMax = new Vector2(1f, 0f);
+                    rect.pivot = new Vector2(0.5f, 0f);
+                    rect.anchoredPosition = new Vector2(0f, 12f);
+                    rect.sizeDelta = new Vector2(-16f, 42f);
+                }
             }
-            object selected = ordered.FirstOrDefault(n => ToInt(Get(n, "id"), -1) == _selectedNationId);
-            if (selected == null) { AddLabel("선택된 국가가 없습니다.", ref y, 18, FontStyle.Normal); return; }
-            AddLabel("선택: " + FriendlyName(selected) + " | 국가 자금: " + ToLong(Get(Get(selected, "budget"), "value"), 0).ToString("N0", CultureInfo.InvariantCulture), ref y, 17, FontStyle.Normal);
-            object target = selected;
-            object input = AddInput(_nationMoneyInput, ref y);
-            AddActionButton("ADD  입력값만큼 국가 자금 추가", ref y, delegate { _nationMoneyInput = Text(Get(input, "text")); RunMoney("국가 자금", _nationMoneyInput, delegate(long amount, out long result) { return AddNationMoney(target, amount, out result); }, instanceType, people, parties, nations); });
+            WriteIntegratedUiReport("person-attached", target);
         }
 
-        private void BuildActionUi(Type instanceType, List<object> people, List<object> parties, List<object> nations, ref float y)
+        private void AttachPartyMaxButton(object partyMembers, object uiList)
         {
-            object player = GetStatic(instanceType, "Player"); object actions = player == null ? null : Get(player, "actions");
-            if (actions == null) { AddLabel("플레이어 행동력 객체를 찾지 못했습니다.", ref y, 18, FontStyle.Normal); return; }
-            AddLabel("행동력 현재: " + ToInt(Get(actions, "Points", "points"), 0) + " / 최대: " + ToInt(Get(actions, "Max"), 0), ref y, 18, FontStyle.Bold);
-            object input = AddInput(_actionPointsInput, ref y);
-            AddActionButton("ADD  입력값만큼 행동력 추가", ref y, delegate
+            Transform directory = Get(uiList, "Directory") as Transform;
+            if (directory == null || FindDirectChild(directory, "LawgiversControl.PartyMax") != null)
+                return;
+
+            AcquireFont(directory);
+            if (_uiFont == null)
+                return;
+
+            GameObject row = CreateIntegratedButton(directory, "LawgiversControl.PartyMax", "CHEAT  ·  모두 최대", delegate
             {
-                _actionPointsInput = Text(Get(input, "text")); int amount; int result;
-                if (!int.TryParse(_actionPointsInput, NumberStyles.Integer, CultureInfo.InvariantCulture, out amount)) _uiStatus = "행동력 입력값이 올바른 정수가 아닙니다.";
-                else if (!AddActionPoints(actions, amount, out result)) _uiStatus = "행동력 추가에 실패했습니다.";
-                else { _uiStatus = "행동력: " + amount + " 추가 → " + result; RefreshApplyReport(instanceType, people, parties, nations); }
-                RebuildUi();
+                object party = Get(partyMembers, "Party");
+                Type instanceType;
+                object world;
+                List<object> people;
+                List<object> parties;
+                List<object> nations;
+                if (party == null || !TryGetWorld(out instanceType, out world, out people, out parties, out nations))
+                {
+                    MelonLogger.Warning("The party member list no longer has a valid party.");
+                    return;
+                }
+                int persons;
+                int changed = MaxPartyMemberAttributes(party, people, out persons);
+                Invoke(partyMembers, "RefreshAlways");
+                Invoke(uiList, "RefreshAlways");
+                MelonLogger.Msg(FriendlyName(party) + ": maximized " + changed + " attributes for " + persons + " members.");
             });
+
+            LayoutElement element = row.AddComponent<LayoutElement>();
+            element.minHeight = 42f;
+            element.preferredHeight = 42f;
+            element.flexibleWidth = 1f;
+            row.transform.SetAsFirstSibling();
+            WriteIntegratedUiReport("party-attached", directory);
         }
 
-        private delegate bool MoneyAction(long amount, out long result);
-        private void RunMoney(string label, string input, MoneyAction action, Type instanceType, List<object> people, List<object> parties, List<object> nations)
+        private GameObject CreateIntegratedButton(Transform parent, string name, string label, Action action)
         {
-            long amount; long result;
-            if (!long.TryParse(input, NumberStyles.Integer, CultureInfo.InvariantCulture, out amount)) _uiStatus = label + " 입력값이 올바른 정수가 아닙니다.";
-            else if (!action(amount, out result)) _uiStatus = label + " 추가에 실패했습니다.";
-            else { _uiStatus = label + ": " + amount.ToString("N0", CultureInfo.InvariantCulture) + " 추가 → " + result.ToString("N0", CultureInfo.InvariantCulture); RefreshApplyReport(instanceType, people, parties, nations); }
-            RebuildUi();
-        }
+            GameObject row = CreateRect(name, parent);
+            Image background = row.AddComponent<Image>();
+            background.color = IntegratedButtonColor;
+            Outline outline = row.AddComponent<Outline>();
+            outline.effectColor = new Color(0.18f, 0.18f, 0.19f, 0.9f);
+            outline.effectDistance = new Vector2(1f, -1f);
 
-        private void AddPager(int count, ref int page, ref float y)
-        {
-            int max = Math.Max(0, (count - 1) / UiPageSize); page = Math.Max(0, Math.Min(page, max)); int current = page;
-            AddButton("이전", new Vector2(0f, -y), new Vector2(92f, 36f), delegate { SetCurrentPage(Math.Max(0, current - 1)); RebuildUi(); });
-            CreateText(_uiContent, (page + 1) + " / " + (max + 1) + "  (총 " + count + ")", new Vector2(100f, -y), new Vector2(288f, 36f), 16, TextAnchor.MiddleCenter, FontStyle.Bold);
-            AddButton("다음", new Vector2(396f, -y), new Vector2(92f, 36f), delegate { SetCurrentPage(Math.Min(max, current + 1)); RebuildUi(); }); y += 42f;
-        }
-        private void SetCurrentPage(int page) { if (_uiTab == 0) _personPage = page; else if (_uiTab == 1) _partyPage = page; else _nationPage = page; }
-        private void AddRowButton(string label, int tab, ref float y, float x, float width) { AddButton(label, new Vector2(x, -y), new Vector2(width, 37f), delegate { _uiTab = tab; RebuildUi(); }, _uiTab == tab ? CheatAccent : ControlColor); }
-        private void AddFullButton(string label, ref float y, Action action) { AddButton(label, new Vector2(0f, -y), new Vector2(UiContentWidth, 37f), action, ControlSelectedColor); y += 42f; }
-        private void AddActionButton(string label, ref float y, Action action) { AddButton(label, new Vector2(0f, -y), new Vector2(UiContentWidth, 40f), action, CheatAccent); y += 46f; }
-        private void AddLabel(string label, ref float y, int size, FontStyle style) { CreateText(_uiContent, label, new Vector2(4f, -y), new Vector2(UiContentWidth - 8f, 32f), size, TextAnchor.MiddleLeft, style); y += 36f; }
-        private void AddStatus(string label, ref float y)
-        {
-            GameObject bar = CreateRect("Status", _uiContent, new Vector2(0f, -y), new Vector2(UiContentWidth, 38f), new Vector2(0f, 1f));
-            Image image = bar.AddComponent<Image>(); image.color = new Color(0.93f, 0.73f, 0.62f, 0.92f);
-            object text = CreateText(bar.transform, label, new Vector2(10f, 0f), new Vector2(UiContentWidth - 20f, 38f), 14, TextAnchor.MiddleLeft, FontStyle.Bold);
-            Set(text, "color", CheatAccentDark);
-            y += 44f;
-        }
-        private object AddInput(string value, ref float y)
-        {
-            GameObject go = CreateRect("Input", _uiContent, new Vector2(0f, -y), new Vector2(UiContentWidth, 40f), new Vector2(0f, 1f));
-            Image image = go.AddComponent<Image>(); image.color = new Color(0.94f, 0.94f, 0.94f, 1f);
-            Outline outline = go.AddComponent<Outline>(); outline.effectColor = new Color(0.35f, 0.36f, 0.38f, 0.85f); outline.effectDistance = new Vector2(1f, -1f);
-            object text = CreateText(go.transform, value, new Vector2(12f, 0f), new Vector2(UiContentWidth - 24f, 40f), 17, TextAnchor.MiddleLeft, FontStyle.Bold);
-            Set(text, "color", TextColor);
-            object input = AddComponent(go, FindType("TMPro.TMP_InputField"));
-            if (input == null)
-                throw new InvalidOperationException("TMP_InputField could not be created.");
-            Set(input, "textViewport", go.GetComponent<RectTransform>());
-            Set(input, "textComponent", text);
-            Set(input, "text", value);
-            SetEnum(input, "contentType", "IntegerNumber");
-            SetEnum(input, "lineType", "SingleLine");
-            y += 46f; return input;
-        }
-        private Button AddButton(string label, Vector2 position, Vector2 size, Action action)
-        {
-            return AddButton(label, position, size, action, ControlColor);
-        }
-        private Button AddButton(string label, Vector2 position, Vector2 size, Action action, Color color)
-        {
-            Button button = CreateButton(_uiContent, label, position, size, action, color);
-            _contentButtonPointers.Add(ButtonPointer(button));
-            return button;
-        }
-        private Button CreateButton(Transform parent, string label, Vector2 position, Vector2 size, Action action, Color color)
-        {
-            GameObject go = CreateRect("Button." + label, parent, position, size, new Vector2(0f, 1f));
-            Image image = go.AddComponent<Image>(); image.color = color;
-            Button button = go.AddComponent<Button>(); button.targetGraphic = image;
-            object buttonText = CreateText(go.transform, label, Vector2.zero, size, 16, TextAnchor.MiddleCenter, FontStyle.Bold);
-            Set(buttonText, "color", Color.white);
-            object pointerValue = Get(button, "Pointer");
-            if (!(pointerValue is IntPtr) || (IntPtr)pointerValue == IntPtr.Zero)
-                throw new InvalidOperationException("Unity button pointer was not available.");
-            UiCallbacks[(IntPtr)pointerValue] = action;
-            return button;
-        }
-        private object CreateText(Transform parent, string value, Vector2 position, Vector2 size, int fontSize, TextAnchor anchor, FontStyle style)
-        {
-            GameObject go = CreateRect("Text", parent, position, size, new Vector2(0f, 1f));
-            object text = AddComponent(go, FindType("TMPro.TextMeshProUGUI"));
-            if (text == null)
-                throw new InvalidOperationException("TextMeshProUGUI could not be created.");
+            Button button = row.AddComponent<Button>();
+            button.targetGraphic = background;
+            ColorBlock colors = button.colors;
+            colors.highlightedColor = new Color(0.40f, 0.41f, 0.43f, 1f);
+            colors.pressedColor = new Color(0.24f, 0.25f, 0.27f, 1f);
+            button.colors = colors;
+
+            GameObject accent = CreateRect("CheatAccent", row.transform);
+            RectTransform accentRect = accent.GetComponent<RectTransform>();
+            accentRect.anchorMin = new Vector2(0f, 0f);
+            accentRect.anchorMax = new Vector2(0f, 1f);
+            accentRect.pivot = new Vector2(0f, 0.5f);
+            accentRect.anchoredPosition = Vector2.zero;
+            accentRect.sizeDelta = new Vector2(5f, 0f);
+            accent.AddComponent<Image>().color = IntegratedAccentColor;
+
+            GameObject textObject = CreateRect("Label", row.transform);
+            RectTransform textRect = textObject.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = new Vector2(8f, 0f);
+            textRect.offsetMax = Vector2.zero;
+            object text = AddComponent(textObject, FindType("TMPro.TextMeshProUGUI"));
             Set(text, "font", _uiFont);
             if (_uiFontMaterial != null)
                 Set(text, "fontSharedMaterial", _uiFontMaterial);
-            Set(text, "text", value);
-            Invoke(text, "SetText", value);
-            Set(text, "fontSize", (float)fontSize);
-            SetEnum(text, "fontStyle", style == FontStyle.Bold ? "Bold" : "Normal");
-            SetEnum(text, "alignment", anchor == TextAnchor.MiddleCenter ? "Midline" : anchor == TextAnchor.MiddleRight ? "MidlineRight" : "MidlineLeft");
-            Set(text, "color", TextColor);
-            Set(text, "enabled", true);
+            Set(text, "text", label);
+            Set(text, "fontSize", 18f);
+            SetEnum(text, "fontStyle", "Bold");
+            SetEnum(text, "alignment", "Center");
+            Set(text, "color", Color.white);
             Invoke(text, "SetAllDirty");
-            Invoke(text, "ForceMeshUpdate");
-            return text;
+
+            IntPtr pointer = ButtonPointer(button);
+            if (pointer == IntPtr.Zero)
+                throw new InvalidOperationException("Unity button pointer is unavailable.");
+            IntegratedCallbacks[pointer] = action;
+            return row;
         }
-        private static GameObject CreateRect(string name, Transform parent, Vector2 position, Vector2 size, Vector2 anchor)
+
+        private void AcquireFont(Transform context)
+        {
+            if (_uiFont != null)
+                return;
+            Type textType = FindType("TMPro.TextMeshProUGUI");
+            if (textType == null)
+                return;
+            object nativeType = NativeType(textType);
+            object local = InvokeResult(context.gameObject, "GetComponentsInChildren", nativeType, true);
+            object candidate = Values(local).FirstOrDefault(x => Get(x, "font") != null);
+            if (candidate == null)
+            {
+                object all = InvokeStaticResult(typeof(Resources), "FindObjectsOfTypeAll", nativeType);
+                candidate = Values(all).FirstOrDefault(x => Get(x, "font") != null);
+            }
+            _uiFont = Get(candidate, "font");
+            _uiFontMaterial = Get(candidate, "fontSharedMaterial", "fontMaterial");
+        }
+
+        private static GameObject CreateRect(string name, Transform parent)
+        {
+            object rectType = NativeType(typeof(RectTransform));
+            Type arrayType = Type.GetType("Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray`1, Il2CppInterop.Runtime", true).MakeGenericType(rectType.GetType());
+            object componentTypes = Activator.CreateInstance(arrayType, new object[] { 1L });
+            arrayType.GetProperty("Item").SetValue(componentTypes, rectType, new object[] { 0 });
+            GameObject go = (GameObject)Activator.CreateInstance(typeof(GameObject), new object[] { name, componentTypes });
+            go.transform.SetParent(parent, false);
+            return go;
+        }
+
+        private static object NativeType(Type type)
         {
             Type il2CppType = Type.GetType("Il2CppInterop.Runtime.Il2CppType, Il2CppInterop.Runtime", true);
-            object rectTransformType = il2CppType.GetMethod("From", All, null, new[] { typeof(Type) }, null).Invoke(null, new object[] { typeof(RectTransform) });
-            Type referenceArray = Type.GetType("Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray`1, Il2CppInterop.Runtime", true).MakeGenericType(rectTransformType.GetType());
-            object componentTypes = Activator.CreateInstance(referenceArray, new object[] { 1L });
-            referenceArray.GetProperty("Item").SetValue(componentTypes, rectTransformType, new object[] { 0 });
-            GameObject go = (GameObject)Activator.CreateInstance(typeof(GameObject), new object[] { name, componentTypes });
-            go.transform.SetParent(parent, false); RectTransform rect = go.GetComponent<RectTransform>(); rect.anchorMin = rect.anchorMax = anchor; rect.pivot = new Vector2(0f, 1f); rect.anchoredPosition = position; rect.sizeDelta = size; return go;
-        }
-
-        private static IntPtr ButtonPointer(Button button)
-        {
-            object raw = Get(button, "Pointer");
-            return raw is IntPtr ? (IntPtr)raw : IntPtr.Zero;
-        }
-
-        private object FindGameUiFont()
-        {
-            try
-            {
-                Type textType = FindType("TMPro.TextMeshProUGUI");
-                if (textType == null)
-                    return null;
-                Type il2CppType = Type.GetType("Il2CppInterop.Runtime.Il2CppType, Il2CppInterop.Runtime", true);
-                object nativeTextType = il2CppType.GetMethod("From", All, null, new[] { typeof(Type) }, null).Invoke(null, new object[] { textType });
-                object foundTexts = InvokeStaticResult(typeof(Resources), "FindObjectsOfTypeAll", nativeTextType);
-                foreach (object item in Values(foundTexts))
-                {
-                    object transform = Get(item, "transform");
-                    object root = Get(transform, "root");
-                    object rootObject = Get(root, "gameObject");
-                    if (Same(Text(Get(rootObject, "name")), "LawgiversControl.Canvas"))
-                        continue;
-                    object font = Get(item, "font");
-                    string content = Text(Get(item, "text"));
-                    if (font == null || string.IsNullOrWhiteSpace(content))
-                        continue;
-                    _uiFontMaterial = Get(item, "fontSharedMaterial", "fontMaterial");
-                    _uiFontSource = content.Length > 32 ? content.Substring(0, 32) : content;
-                    return font;
-                }
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning("Could not enumerate game fonts: " + ex.Message);
-                return null;
-            }
+            return il2CppType.GetMethod("From", All, null, new[] { typeof(Type) }, null).Invoke(null, new object[] { type });
         }
 
         private static object AddComponent(GameObject gameObject, Type componentType)
         {
-            if (gameObject == null || componentType == null)
-                return null;
-            Type il2CppType = Type.GetType("Il2CppInterop.Runtime.Il2CppType, Il2CppInterop.Runtime", true);
-            object nativeType = il2CppType.GetMethod("From", All, null, new[] { typeof(Type) }, null).Invoke(null, new object[] { componentType });
-            return InvokeResult(gameObject, "AddComponent", nativeType);
+            return gameObject == null || componentType == null ? null : InvokeResult(gameObject, "AddComponent", NativeType(componentType));
         }
 
         private static bool SetEnum(object target, string propertyName, string value)
@@ -429,85 +327,73 @@ namespace LawgiversControl
             catch { return false; }
         }
 
+        private static Transform FindDirectChild(Transform parent, string name)
+        {
+            if (parent == null)
+                return null;
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                Transform child = parent.GetChild(i);
+                if (child != null && string.Equals(child.gameObject.name, name, StringComparison.Ordinal))
+                    return child;
+            }
+            return null;
+        }
+
+        private static bool SameNativeObject(object left, object right)
+        {
+            if (ReferenceEquals(left, right))
+                return true;
+            object a = Get(left, "Pointer");
+            object b = Get(right, "Pointer");
+            return a is IntPtr && b is IntPtr && (IntPtr)a != IntPtr.Zero && (IntPtr)a == (IntPtr)b;
+        }
+
+        private static IntPtr ButtonPointer(Button button)
+        {
+            object pointer = Get(button, "Pointer");
+            return pointer is IntPtr ? (IntPtr)pointer : IntPtr.Zero;
+        }
+
         private static void EnsureButtonHook()
         {
             if (_buttonHookPatched)
                 return;
-            var press = typeof(Button).GetMethod("Press", All);
+            MethodInfo press = typeof(Button).GetMethod("Press", All);
             if (press == null)
                 throw new MissingMethodException("UnityEngine.UI.Button.Press");
-            _harmony.Patch(press, postfix: new HarmonyLib.HarmonyMethod(typeof(LawgiversControlMod).GetMethod("ButtonPressPostfix", All)));
+            _harmony.Patch(press, postfix: new HarmonyMethod(typeof(LawgiversControlMod).GetMethod("ButtonPressPostfix", All)));
             _buttonHookPatched = true;
-        }
-
-        private static void EnsureTextReadyHook()
-        {
-            if (_textReadyHookPatched)
-                return;
-            Type textType = FindType("TMPro.TextMeshProUGUI");
-            MethodInfo onEnable = textType == null ? null : textType.GetMethod("OnEnable", All);
-            MethodInfo rebuild = textType == null ? null : textType.GetMethod("Rebuild", All);
-            Type registryType = FindType("UnityEngine.UI.CanvasUpdateRegistry");
-            MethodInfo performUpdate = registryType == null ? null : registryType.GetMethod("PerformUpdate", All);
-            if (onEnable == null || rebuild == null || performUpdate == null)
-                throw new MissingMethodException("TMPro text or CanvasUpdateRegistry update hook");
-            _harmony.Patch(onEnable, postfix: new HarmonyLib.HarmonyMethod(typeof(LawgiversControlMod).GetMethod("TextReadyPostfix", All)));
-            _harmony.Patch(rebuild, postfix: new HarmonyLib.HarmonyMethod(typeof(LawgiversControlMod).GetMethod("TextReadyPostfix", All)));
-            _harmony.Patch(performUpdate, postfix: new HarmonyLib.HarmonyMethod(typeof(LawgiversControlMod).GetMethod("UiUpdatePostfix", All)));
-            _textReadyHookPatched = true;
-        }
-
-        private static void TextReadyPostfix(object __instance)
-        {
-            try
-            {
-                LawgiversControlMod owner = _uiOwner;
-                if (owner == null || owner._uiRoot != null || owner._uiCreating)
-                    return;
-                object font = Get(__instance, "font");
-                string content = Text(Get(__instance, "text"));
-                if (font == null || string.IsNullOrWhiteSpace(content))
-                    return;
-                owner._uiFont = font;
-                owner._uiFontMaterial = Get(__instance, "fontSharedMaterial", "fontMaterial");
-                owner._uiFontSource = content.Length > 32 ? content.Substring(0, 32) : content;
-                _uiCreationPending = true;
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Error("Control UI text-ready hook failed: " + ex);
-            }
-        }
-
-        private static void UiUpdatePostfix()
-        {
-            try
-            {
-                LawgiversControlMod owner = _uiOwner;
-                if (!_uiCreationPending || owner == null || owner._uiRoot != null || owner._uiCreating)
-                    return;
-                _uiCreationPending = false;
-                owner.EnsureControlUi();
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Error("Control UI deferred creation failed: " + ex);
-            }
         }
 
         private static void ButtonPressPostfix(object __instance)
         {
             try
             {
-                object raw = Get(__instance, "Pointer");
+                object pointer = Get(__instance, "Pointer");
                 Action callback;
-                if (raw is IntPtr && UiCallbacks.TryGetValue((IntPtr)raw, out callback))
+                if (pointer is IntPtr && IntegratedCallbacks.TryGetValue((IntPtr)pointer, out callback))
                     callback();
             }
-            catch (Exception ex)
+            catch (Exception ex) { MelonLogger.Error("Integrated cheat action failed: " + ex); }
+        }
+
+        private void WriteIntegratedUiReport(string state, Transform parent)
+        {
+            try
             {
-                MelonLogger.Error("Control button action failed: " + ex);
+                string report = Path.Combine(_directory, "ui-runtime.json");
+                File.WriteAllText(report, JsonConvert.SerializeObject(new
+                {
+                    GeneratedUtc = DateTime.UtcNow,
+                    Mode = "ContextIntegrated",
+                    State = state,
+                    Parent = parent == null ? null : parent.gameObject.name,
+                    SeparateOverlay = false,
+                    CustomInputFields = false
+                }, Formatting.Indented));
             }
+            catch { }
         }
     }
 }
