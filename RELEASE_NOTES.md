@@ -1,8 +1,12 @@
-# Lawgivers II Control 1.3.0
+# Lawgivers II Control 1.3.1
 
 Lawgivers II(Steam, Windows x86 IL2CPP)용 설정 기반 싱글플레이 모드입니다.
 
 ## 기능
+
+- IL2CPP 네이티브 호출에 반응하지 않던 Harmony UI 훅을 활성 UI 폴링으로 교체
+- 버튼 동작을 실제 `Button.onClick` 네이티브 UnityEvent에 연결
+- `EDIT_*` 예제 설정을 실행 규칙에서 자동 제외하여 반복 경고와 trampoline 오류 방지
 
 - 별도 오버레이와 중복 대상 선택 UI 제거
 - 현재 인물의 기존 능력치 창 아래에 `CHEAT · 모두 최대` 직접 통합

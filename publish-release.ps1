@@ -1,5 +1,5 @@
 param(
-  [string]$Version = '1.2.1',
+  [string]$Version = '1.3.1',
   [string]$Repository = 'bbggkkk/lawgivers2mode',
   [string]$NotesPath = (Join-Path $PSScriptRoot 'RELEASE_NOTES.md'),
   [switch]$SkipPackageBuild

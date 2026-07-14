@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using HarmonyLib;
 using MelonLoader;
 using Newtonsoft.Json;
 using UnityEngine;
@@ -15,41 +14,33 @@ namespace LawgiversControl
     {
         private static readonly Color IntegratedButtonColor = new Color(0.32f, 0.33f, 0.35f, 0.98f);
         private static readonly Color IntegratedAccentColor = new Color(0.92f, 0.36f, 0.16f, 1f);
-        private static readonly Dictionary<IntPtr, Action> IntegratedCallbacks = new Dictionary<IntPtr, Action>();
-        private static LawgiversControlMod _uiOwner;
-        private static bool _integratedHooksPatched;
-        private static bool _buttonHookPatched;
-        private static object _partyMembersOpening;
-        private static object _partyMembersContext;
-        private static object _partyMemberList;
+        private static bool _integratedUiReady;
+        private static Type _personAttributesType;
+        private static Type _partyMembersType;
+        private static Type _uiListType;
+        private readonly List<object> _nativeClickDelegates = new List<object>();
+        private readonly List<Action> _managedClickActions = new List<Action>();
+        private bool _nativeButtonCallbackVerified;
         private object _uiFont;
         private object _uiFontMaterial;
 
         partial void EnsureControlUi()
         {
-            _uiOwner = this;
-            if (_integratedHooksPatched || _harmony == null)
+            if (_integratedUiReady)
                 return;
 
             try
             {
-                EnsureButtonHook();
-                Type personAttributes = FindType("Il2CppLawgivers.Interface.UIPersonAttributes");
-                Type partyMembers = FindType("Il2CppLawgivers.Interface.UIPartyMembers");
-                Type uiList = FindType("Il2CppLawgivers.Interface.UIList");
-                if (personAttributes == null || partyMembers == null || uiList == null)
+                _personAttributesType = FindType("Il2CppLawgivers.Interface.UIPersonAttributes");
+                _partyMembersType = FindType("Il2CppLawgivers.Interface.UIPartyMembers");
+                _uiListType = FindType("Il2CppLawgivers.Interface.UIList");
+                if (_personAttributesType == null || _partyMembersType == null || _uiListType == null)
                     throw new TypeLoadException("Required Lawgivers UI types are not loaded yet.");
 
-                PatchPostfix(personAttributes, "RefreshAlways", "PersonAttributesRefreshPostfix");
-                PatchPrefix(partyMembers, "ButtonPeople", "PartyMembersButtonPrefix");
-                PatchPostfix(partyMembers, "ButtonPeople", "PartyMembersButtonPostfix");
-                PatchPostfix(uiList, "RefreshAlways", "UiListRefreshPostfix");
-                foreach (MethodInfo open in uiList.GetMethods(All).Where(m => m.Name == "Open" && m.DeclaringType == uiList))
-                    _harmony.Patch(open, postfix: new HarmonyMethod(typeof(LawgiversControlMod).GetMethod("UiListOpenPostfix", All)));
-
-                _integratedHooksPatched = true;
-                WriteIntegratedUiReport("hooks-installed", null);
-                MelonLogger.Msg("Context-integrated person and party controls enabled.");
+                VerifyNativeButtonCallback();
+                _integratedUiReady = true;
+                WriteIntegratedUiReport("polling-ready", null);
+                MelonLogger.Msg("Context-integrated UI polling enabled.");
             }
             catch (Exception ex)
             {
@@ -57,60 +48,80 @@ namespace LawgiversControl
             }
         }
 
-        private static void PatchPrefix(Type type, string methodName, string patchName)
+        private void VerifyNativeButtonCallback()
         {
-            MethodInfo method = type.GetMethod(methodName, All);
-            if (method == null)
-                throw new MissingMethodException(type.FullName, methodName);
-            _harmony.Patch(method, prefix: new HarmonyMethod(typeof(LawgiversControlMod).GetMethod(patchName, All)));
-        }
-
-        private static void PatchPostfix(Type type, string methodName, string patchName)
-        {
-            MethodInfo method = type.GetMethod(methodName, All);
-            if (method == null)
-                throw new MissingMethodException(type.FullName, methodName);
-            _harmony.Patch(method, postfix: new HarmonyMethod(typeof(LawgiversControlMod).GetMethod(patchName, All)));
-        }
-
-        private static void PersonAttributesRefreshPostfix(object __instance)
-        {
-            try { _uiOwner?.AttachPersonMaxButton(__instance); }
-            catch (Exception ex) { MelonLogger.Error("Person cheat button failed: " + ex); }
-        }
-
-        private static void PartyMembersButtonPrefix(object __instance)
-        {
-            _partyMembersOpening = __instance;
-            _partyMembersContext = __instance;
-            _partyMemberList = null;
-        }
-
-        private static void UiListOpenPostfix(object __instance)
-        {
-            if (_partyMembersOpening != null)
-                _partyMemberList = __instance;
-        }
-
-        private static void PartyMembersButtonPostfix(object __instance)
-        {
+            GameObject probe = null;
             try
             {
-                if (_partyMemberList != null)
-                    _uiOwner?.AttachPartyMaxButton(__instance, _partyMemberList);
+                probe = CreateRect("LawgiversControl.NativeButtonProbe", null);
+                Button button = probe.AddComponent<Button>();
+                bool invoked = false;
+                BindNativeClick(button, delegate { invoked = true; });
+                if (!Invoke(Get(button, "onClick"), "Invoke") || !invoked)
+                    throw new InvalidOperationException("Native UnityEvent did not invoke the managed callback.");
+                _nativeButtonCallbackVerified = true;
             }
-            catch (Exception ex) { MelonLogger.Error("Party cheat button failed: " + ex); }
-            finally { _partyMembersOpening = null; }
+            finally
+            {
+                if (probe != null)
+                    UnityEngine.Object.Destroy(probe);
+            }
         }
 
-        private static void UiListRefreshPostfix(object __instance)
+        partial void RefreshControlUi()
         {
+            EnsureControlUi();
+            if (!_integratedUiReady)
+                return;
+
             try
             {
-                if (_partyMemberList != null && SameNativeObject(__instance, _partyMemberList) && _partyMembersContext != null)
-                    _uiOwner?.AttachPartyMaxButton(_partyMembersContext, __instance);
+                foreach (object attributes in FindActiveUiObjects(_personAttributesType))
+                {
+                    if (Get(attributes, "Person") != null)
+                        AttachPersonMaxButton(attributes);
+                }
+
+                List<object> partyComponents = FindActiveUiObjects(_partyMembersType)
+                    .Where(x => Get(x, "Party") != null).ToList();
+                if (partyComponents.Count == 0)
+                    return;
+
+                foreach (object list in FindActiveUiObjects(_uiListType))
+                {
+                    object matchingParty = partyComponents.FirstOrDefault(p => IsPartyMemberList(list, Get(p, "Party")));
+                    if (matchingParty != null)
+                        AttachPartyMaxButton(matchingParty, list);
+                }
             }
-            catch (Exception ex) { MelonLogger.Error("Party list cheat refresh failed: " + ex); }
+            catch (Exception ex) { MelonLogger.Error("Context UI polling failed: " + ex); }
+        }
+
+        private static List<object> FindActiveUiObjects(Type type)
+        {
+            if (type == null)
+                return new List<object>();
+            object found = InvokeStaticResult(typeof(Resources), "FindObjectsOfTypeAll", NativeType(type));
+            return Values(found).Where(IsActiveUiObject).ToList();
+        }
+
+        private static bool IsActiveUiObject(object instance)
+        {
+            GameObject gameObject = Get(instance, "gameObject") as GameObject;
+            return gameObject != null && gameObject.activeInHierarchy;
+        }
+
+        private static bool IsPartyMemberList(object uiList, object party)
+        {
+            int partyId = ToInt(Get(party, "id"), int.MinValue);
+            foreach (object uiBox in Values(Get(uiList, "Boxes")))
+            {
+                object data = Get(Get(uiBox, "box"), "data");
+                if (data == null || !data.GetType().FullName.EndsWith(".Person", StringComparison.Ordinal))
+                    continue;
+                return partyId == int.MinValue || ToInt(Get(data, "PartyID", "partyID"), int.MinValue) == partyId;
+            }
+            return false;
         }
 
         private void AttachPersonMaxButton(object attributes)
@@ -182,6 +193,7 @@ namespace LawgiversControl
                 }
             }
             WriteIntegratedUiReport("person-attached", target);
+            MelonLogger.Msg("Attached CHEAT control to active person attributes UI.");
         }
 
         private void AttachPartyMaxButton(object partyMembers, object uiList)
@@ -220,6 +232,7 @@ namespace LawgiversControl
             element.flexibleWidth = 1f;
             row.transform.SetAsFirstSibling();
             WriteIntegratedUiReport("party-attached", directory);
+            MelonLogger.Msg("Attached CHEAT control to active party member list.");
         }
 
         private GameObject CreateIntegratedButton(Transform parent, string name, string label, Action action)
@@ -264,11 +277,32 @@ namespace LawgiversControl
             Set(text, "color", Color.white);
             Invoke(text, "SetAllDirty");
 
-            IntPtr pointer = ButtonPointer(button);
-            if (pointer == IntPtr.Zero)
-                throw new InvalidOperationException("Unity button pointer is unavailable.");
-            IntegratedCallbacks[pointer] = action;
+            BindNativeClick(button, action);
             return row;
+        }
+
+        private void BindNativeClick(Button button, Action action)
+        {
+            Type unityActionType = FindType("UnityEngine.Events.UnityAction");
+            if (unityActionType == null)
+                throw new TypeLoadException("UnityEngine.Events.UnityAction");
+            MethodInfo converter = unityActionType.GetMethods(All).FirstOrDefault(method =>
+            {
+                ParameterInfo[] parameters = method.GetParameters();
+                return method.IsStatic && method.Name == "op_Implicit" && parameters.Length == 1 && parameters[0].ParameterType == typeof(Action);
+            });
+            if (converter == null)
+                throw new MissingMethodException(unityActionType.FullName, "op_Implicit(System.Action)");
+
+            object nativeAction = converter.Invoke(null, new object[] { action });
+            object onClick = Get(button, "onClick");
+            MethodInfo addListener = onClick == null ? null : onClick.GetType().GetMethods(All)
+                .FirstOrDefault(method => method.Name == "AddListener" && method.GetParameters().Length == 1);
+            if (nativeAction == null || addListener == null)
+                throw new MissingMethodException("Button.onClick.AddListener(UnityAction)");
+            addListener.Invoke(onClick, new[] { nativeAction });
+            _managedClickActions.Add(action);
+            _nativeClickDelegates.Add(nativeAction);
         }
 
         private void AcquireFont(Transform context)
@@ -340,44 +374,6 @@ namespace LawgiversControl
             return null;
         }
 
-        private static bool SameNativeObject(object left, object right)
-        {
-            if (ReferenceEquals(left, right))
-                return true;
-            object a = Get(left, "Pointer");
-            object b = Get(right, "Pointer");
-            return a is IntPtr && b is IntPtr && (IntPtr)a != IntPtr.Zero && (IntPtr)a == (IntPtr)b;
-        }
-
-        private static IntPtr ButtonPointer(Button button)
-        {
-            object pointer = Get(button, "Pointer");
-            return pointer is IntPtr ? (IntPtr)pointer : IntPtr.Zero;
-        }
-
-        private static void EnsureButtonHook()
-        {
-            if (_buttonHookPatched)
-                return;
-            MethodInfo press = typeof(Button).GetMethod("Press", All);
-            if (press == null)
-                throw new MissingMethodException("UnityEngine.UI.Button.Press");
-            _harmony.Patch(press, postfix: new HarmonyMethod(typeof(LawgiversControlMod).GetMethod("ButtonPressPostfix", All)));
-            _buttonHookPatched = true;
-        }
-
-        private static void ButtonPressPostfix(object __instance)
-        {
-            try
-            {
-                object pointer = Get(__instance, "Pointer");
-                Action callback;
-                if (pointer is IntPtr && IntegratedCallbacks.TryGetValue((IntPtr)pointer, out callback))
-                    callback();
-            }
-            catch (Exception ex) { MelonLogger.Error("Integrated cheat action failed: " + ex); }
-        }
-
         private void WriteIntegratedUiReport(string state, Transform parent)
         {
             try
@@ -390,7 +386,8 @@ namespace LawgiversControl
                     State = state,
                     Parent = parent == null ? null : parent.gameObject.name,
                     SeparateOverlay = false,
-                    CustomInputFields = false
+                    CustomInputFields = false,
+                    NativeButtonCallback = _nativeButtonCallbackVerified
                 }, Formatting.Indented));
             }
             catch { }

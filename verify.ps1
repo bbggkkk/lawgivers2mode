@@ -51,7 +51,7 @@ if ($RequireRuntimeSelfTest)
   Write-Output "PASS: $($checkProperties.Count) IL2CPP runtime checks verified at $($runtime.GeneratedUtc)"
   if (-not (Test-Path -LiteralPath $uiRuntimeReport)) { throw 'No context UI runtime report exists. Launch the game and try again.' }
   $uiRuntime = Get-Content -LiteralPath $uiRuntimeReport -Raw | ConvertFrom-Json
-  if ($uiRuntime.Mode -ne 'ContextIntegrated' -or $uiRuntime.SeparateOverlay -ne $false -or $uiRuntime.CustomInputFields -ne $false) {
+  if ($uiRuntime.Mode -ne 'ContextIntegrated' -or $uiRuntime.SeparateOverlay -ne $false -or $uiRuntime.CustomInputFields -ne $false -or $uiRuntime.NativeButtonCallback -ne $true) {
     throw 'Context UI runtime report is invalid.'
   }
   Write-Output "PASS: context-integrated UI verified at $($uiRuntime.GeneratedUtc)"

@@ -1,4 +1,4 @@
-# Lawgivers II Control 1.3.0
+# Lawgivers II Control 1.3.1
 
 ## 원라인 설치
 

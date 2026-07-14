@@ -1,4 +1,4 @@
-# Lawgivers II Control 1.3.0 라이브 테스트
+# Lawgivers II Control 1.3.1 라이브 테스트
 
 ## 화면 없는 런타임 자가진단
 

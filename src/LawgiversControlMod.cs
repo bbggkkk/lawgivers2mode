@@ -9,7 +9,7 @@ using HarmonyLib;
 using MelonLoader;
 using Newtonsoft.Json;
 
-[assembly: MelonInfo(typeof(LawgiversControl.LawgiversControlMod), "Lawgivers II Control", "1.3.0", "OpenAI")]
+[assembly: MelonInfo(typeof(LawgiversControl.LawgiversControlMod), "Lawgivers II Control", "1.3.1", "OpenAI")]
 [assembly: MelonGame("SomniumSoft", "Lawgivers II")]
 
 namespace LawgiversControl
@@ -42,6 +42,7 @@ namespace LawgiversControl
         };
 
         partial void EnsureControlUi();
+        partial void RefreshControlUi();
 
         public override void OnInitializeMelon()
         {
@@ -65,6 +66,7 @@ namespace LawgiversControl
 
         public override void OnLateInitializeMelon()
         {
+            EnsureControlUi();
             TryInstallPatches();
             TryRunRuntimeSelfTest();
         }
@@ -75,6 +77,7 @@ namespace LawgiversControl
                 return;
             _nextPollUtc = DateTime.UtcNow.AddSeconds(Math.Max(0.25, _config == null ? 1.0 : _config.PollSeconds));
 
+            RefreshControlUi();
             TryInstallPatches();
             bool requested = false;
             try
@@ -1022,6 +1025,9 @@ namespace LawgiversControl
             People = People ?? new List<PersonRule>();
             Parties = Parties ?? new List<PartyRule>();
             Nations = Nations ?? new List<NationRule>();
+            People.RemoveAll(rule => rule == null || (!rule.Id.HasValue && !string.IsNullOrWhiteSpace(rule.Name) && rule.Name.StartsWith("EDIT_", StringComparison.OrdinalIgnoreCase)));
+            Parties.RemoveAll(rule => rule == null || (!rule.Id.HasValue && !string.IsNullOrWhiteSpace(rule.Name) && rule.Name.StartsWith("EDIT_", StringComparison.OrdinalIgnoreCase)));
+            Nations.RemoveAll(rule => rule == null || (!rule.Id.HasValue && !string.IsNullOrWhiteSpace(rule.Name) && rule.Name.StartsWith("EDIT_", StringComparison.OrdinalIgnoreCase)));
             foreach (PersonRule rule in People) rule.Normalize();
             foreach (PartyRule rule in Parties) if (rule.Members != null) rule.Members.Normalize();
         }
